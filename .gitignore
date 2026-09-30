@@ -1,0 +1,43 @@
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build results
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+artifacts/
+
+# .NET tooling and tests
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+coverage*.json
+coverage*.xml
+coverage*.info
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+!packages/build/
+
+# Local logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# OS metadata
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Local security execution artifacts
+.security-run/
