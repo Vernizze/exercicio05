@@ -1169,3 +1169,63 @@ O gate completo foi executado ao final e passou: restore bloqueado, auditoria di
 Permanecem pendentes de decisão do usuário: a forma de entrega (TODO-006) e o encerramento formal dos itens de segurança que dependem de infraestrutura.
 
 ---
+
+## Interação 042 — 1º de outubro de 2026
+
+**Modo: Plan**
+
+### Usuário
+
+> o que temos exatametne em TODO-004 e a parte de TODO-005?
+
+### Claude Code (assistente)
+
+A pergunta partiu de uma linha selecionada neste histórico, no fechamento da Interação 035, que listava TODO-004 e parte de TODO-005 como pendentes. Foi esclarecido que aquela linha é registro do estado daquele momento, preservado sem reescrita, e que os dois itens já estavam concluídos.
+
+Foi resumido o que cada um entregou: o TODO-004 documentou o Swagger com resumo, descrição, todos os retornos possíveis, descrição e exemplo de cada atributo, exemplos nomeados de erro e headers, com um teste que compara os exemplos com as respostas reais (commit `9ed9593`); o TODO-005 acrescentou os testes unitários do handler de movimentação com NSubstitute (commit `614019b`), depois reescritos na refatoração para substituir a unidade de trabalho e os repositórios (commit `ab2efbb`). Foram apontados como únicos pontos em aberto a forma de entrega (TODO-006) e os itens SEC de infraestrutura. Nenhum arquivo foi alterado.
+
+---
+
+## Interação 043 — 1º de outubro de 2026
+
+**Modo: Plan**
+
+### Usuário
+
+> façauma PR para a master e vamos aprová-la
+
+### Claude Code (assistente)
+
+Antes de qualquer ação, o estado foi verificado somente por leitura, e três fatos foram levados ao usuário:
+
+1. o repositório `github.com/Vernizze/exercicio05` é público; o branch `20260930` remoto estava em "Entrega D" (`5c905a0`), com 11 commits existentes apenas localmente, e a `master` no commit inicial (`a8fc750`), sem commits fora do branch;
+2. o GitHub CLI não está instalado, de modo que o assistente consegue publicar o branch pelo Git, mas não abrir a PR sem usar a API do GitHub;
+3. o GitHub não permite que o autor aprove a própria PR; com uma única conta, o passo possível é o merge.
+
+Foram oferecidas três formas de abrir a PR: o assistente publicar o branch e o usuário abrir e integrar a PR no navegador; o assistente usar a credencial guardada no Git Credential Manager para chamar a API; ou instalar o GitHub CLI. O usuário escolheu a primeira, que não usa a credencial dele para nada além do `git push`.
+
+O plano aprovado previu: um último commit documental, para que README e `TODO.md` deixassem de afirmar que o trabalho estava em commits locais e que a forma de entrega estava em aberto; o gate completo; a publicação do branch por avanço simples, sem `--force` e sem tocar na `master`; e a entrega do link da PR com título e descrição. Nenhum arquivo do projeto foi alterado nesta interação.
+
+---
+
+## Interação 044 — 1º de outubro de 2026
+
+**Modo: Act**
+
+### Usuário
+
+> Aprovou o plano da Interação 043 e autorizou sua execução.
+
+### Claude Code (assistente)
+
+A execução partiu do commit `ab2efbb`, no branch `20260930`, com workspace limpo.
+
+O `README.md` passou a registrar que a entrega é por pull request do branch `20260930` para `master`, e o `TODO.md` passou a registrar o TODO-006 como concluído, com a forma de entrega definida e a observação de que não há aprovação por segundo revisor, pois o autor não pode aprovar a própria PR. Nenhum código foi alterado.
+
+O gate completo foi executado e passou: restore bloqueado, auditoria direta e transitiva sem vulnerabilidades conhecidas, secret scanning sem achados, formatação e analisadores aprovados, build Release com zero avisos e zero erros, 340 testes aprovados e cobertura com nova execução em 340/340. A fixture `Questao5/database.sqlite` manteve o SHA-256 `E355A3EDB7D73E7784A7467513248D530C27CC989C624A35D13A188B2AA8DD3C`.
+
+Em seguida, este commit documental foi criado e o branch `20260930` foi publicado no repositório remoto por avanço simples, sem `--force`. A `master` não foi alterada, e a pasta `.claude/`, que não é versionada, não foi enviada.
+
+A abertura e o merge da pull request ficam com o usuário, no GitHub, a partir do link de comparação entre `master` e `20260930` entregue junto com o título e a descrição sugeridos. Este histórico registra o trabalho até a publicação do branch; o merge, por acontecer depois deste commit, não está registrado aqui.
+
+---

@@ -216,7 +216,7 @@ docker compose run --rm api --reconciliar-saldos
 
 ## A história do desenvolvimento
 
-O trabalho aconteceu em dois dias, 30 de setembro e 1º de outubro de 2026, em 41 interações registradas. A regra que estabeleci logo na primeira foi esta: toda conversa vai para um arquivo, deixando claro quem fala e se estamos **planejando** ou **executando**. O resto desta seção segue a ordem em que as coisas aconteceram.
+O trabalho aconteceu em dois dias, 30 de setembro e 1º de outubro de 2026, em 44 interações registradas. A regra que estabeleci logo na primeira foi esta: toda conversa vai para um arquivo, deixando claro quem fala e se estamos **planejando** ou **executando**. O resto desta seção segue a ordem em que as coisas aconteceram.
 
 ### 1. Antes de rodar qualquer coisa
 
@@ -375,7 +375,7 @@ O cuidado principal foi a transação. Antes, movimento, saldo e idempotência e
 - **Sem pipeline de CI/CD, TLS de produção ou política de hosts.** O gate é local, e esses itens dependem de uma infraestrutura que o desafio não define. Estão registrados como SEC-011, SEC-012, SEC-021 e SEC-022.
 - **O Swagger só é publicado em Development**, que é como o Compose executa a API.
 - **Mensagens de validação do framework estão em inglês** (por exemplo, campo obrigatório ausente); as mensagens próprias da API estão em português.
-- **O trabalho está no branch `20260930`**, em commits locais. A forma de entrega está em aberto, registrada como TODO-006.
+- **A entrega é por pull request** do branch `20260930` para `master`. Todo o desenvolvimento foi feito nesse branch; a abertura e o merge da PR são feitos por mim, no GitHub.
 
 ## Estrutura do repositório
 

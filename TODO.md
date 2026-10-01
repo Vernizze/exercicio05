@@ -42,7 +42,9 @@ TODO-004 (documentação Swagger) e TODO-005 (teste unitário do handler de movi
 
 Por fim, o usuário pediu a reorganização do acesso a dados em entidades e repositórios e a mudança das controllers para a raiz do projeto, registradas e concluídas como TODO-007.
 
-Próximos passos, todos dependentes de decisão do usuário: a forma de entrega de TODO-006 e o encerramento formal dos itens SEC que dependem de infraestrutura.
+A forma de entrega foi definida: pull request do branch `20260930` para `master` (TODO-006).
+
+Próximos passos, dependentes do usuário: abrir e integrar a PR no GitHub e decidir o encerramento formal dos itens SEC que dependem de infraestrutura.
 
 ### Entrega C4 — limpeza, documentação, gate e commit funcional
 
@@ -189,7 +191,7 @@ O Compose é um ambiente de demonstração local, sem proxy, TLS, pipeline ou pl
 
 ### Pendências identificadas em 1º de outubro de 2026
 
-Achados do levantamento de fechamento de escopo (Interação 029 de `CONVERSAS.md`). O usuário decidiu tratar primeiro a consulta de saldo e, concluída a sequência, autorizou o TODO-003 e depois o TODO-004 e o TODO-005. Resta em aberto a forma de entrega do TODO-006.
+Achados do levantamento de fechamento de escopo (Interação 029 de `CONVERSAS.md`). O usuário decidiu tratar primeiro a consulta de saldo e, concluída a sequência, autorizou o TODO-003 e depois o TODO-004 e o TODO-005. A forma de entrega do TODO-006 foi definida por último: pull request para `master`.
 
 #### TODO-003 — Devolver `INVALID_VALUE` e `INVALID_TYPE` na resposta HTTP
 
@@ -227,14 +229,15 @@ Achados do levantamento de fechamento de escopo (Interação 029 de `CONVERSAS.m
 
 #### TODO-006 — README e forma de entrega
 
-- **Estado:** Parcialmente atendido na Entrega G — a forma de entrega aguarda decisão
+- **Estado:** Concluído em 1º de outubro de 2026 — README entregue e forma de entrega definida
+- **Forma de entrega:** pull request do branch `20260930` para `master`, no repositório público `github.com/Vernizze/exercicio05`. O assistente publicou o branch; a abertura e o merge da PR ficam com o usuário, no GitHub. Como o autor não pode aprovar a própria PR, não há etapa de aprovação por um segundo revisor.
 - **Prioridade:** Baixa
 - **Evidência de origem:** não existia README com instruções de execução, e nenhum documento define como o trabalho é entregue (merge em `master`, tag ou pacote).
 - **Evidência G:** `README.md` descreve a execução com Docker Compose e sem Docker, a obtenção de token, as chamadas aos dois endpoints, os testes, o gate e a reconciliação.
 - **Ampliação posterior:** a pedido do usuário, o `README.md` foi reescrito para os avaliadores, com o quadro de atendimento ao enunciado, a arquitetura em resumo, a história do desenvolvimento baseada em `CONVERSAS.md`, as decisões e alternativas descartadas, os erros encontrados e corrigidos e as limitações conhecidas.
 
 - [x] Instruções de execução da API, dos testes e do gate.
-- [ ] Forma de entrega definida.
+- [x] Forma de entrega definida.
 
 #### TODO-007 — Entidades, repositórios por tabela e controllers na raiz
 
@@ -843,7 +846,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 Este procedimento foi cumprido. TODO-001 recebeu autorização própria e foi concluído em 1º de outubro de 2026. TODO-002 foi planejado na Entrega B, implementado nas entregas C1 a C3 e concluído em 1º de outubro de 2026. C4 foi concluída e a Entrega D formalizou o planejamento da consulta de saldo. Em 1º de outubro de 2026 o usuário autorizou a sequência F0, F1, F2, E e G descrita no roadmap.
 
-Não existe, neste documento, autorização antecipada para implementar outras pendências funcionais; TODO-003, TODO-004 e TODO-005 foram autorizados e concluídos, e a forma de entrega do TODO-006 aguarda decisão.
+Não existe, neste documento, autorização antecipada para implementar outras pendências funcionais; TODO-003, TODO-004 e TODO-005 foram autorizados e concluídos, e a forma de entrega do TODO-006 foi definida como pull request para `master`.
 
 ## Guardrails permanentes de segurança
 
@@ -887,3 +890,4 @@ Estes itens são controles contínuos e não devem ser marcados globalmente como
 - **1º de outubro de 2026:** TODO-005 e TODO-004 concluídos após autorização específica. O handler de movimentação recebeu testes unitários com NSubstitute, sem mudança em código de produção. O documento OpenAPI passou a trazer descrição geral, resumo e descrição das operações, todos os retornos possíveis, descrição e exemplo de cada atributo, exemplos nomeados de cada situação de erro e headers de resposta, com um teste que compara cada exemplo com a resposta real; nenhuma dependência foi acrescentada e nenhum comportamento foi alterado. Foi eliminada uma falha intermitente preexistente na infraestrutura de testes, causada por `SqliteConnection.ClearAllPools()`. A suíte passou de 233 para 294 testes e o gate completo foi aprovado; a fixture manteve o SHA-256 esperado. Restam a forma de entrega do TODO-006 e os itens SEC de infraestrutura.
 - **1º de outubro de 2026:** `README.md` reescrito para os avaliadores, com as instruções de execução e uso, o quadro de atendimento ao enunciado, a arquitetura em resumo e uma narrativa do desenvolvimento baseada em `CONVERSAS.md`: decisões, alternativas descartadas, ajustes de curso, erros encontrados e limitações. Nenhum código foi alterado; o gate completo foi aprovado com 294 testes.
 - **1º de outubro de 2026:** TODO-007 concluído a pedido do usuário. As controllers foram movidas para `Questao5/Controllers`. O acesso a dados foi reorganizado em uma entidade por tabela, um repositório de leitura e um de escrita por entidade, nas pastas `QueryStore` e `CommandStore`, e uma unidade de trabalho que mantém movimento, saldo e idempotência na mesma transação; os handlers passaram a orquestrar o caso de uso e os antigos stores foram removidos. Nenhum comportamento mudou: contrato HTTP, schema, mensagens e logs são os mesmos. A suíte passou de 294 para 340 testes, foi executada 20 vezes seguidas sem falha, e o gate completo foi aprovado; a fixture manteve o SHA-256 esperado.
+- **1º de outubro de 2026:** forma de entrega definida e TODO-006 concluído: pull request do branch `20260930` para `master`. O branch foi publicado pelo assistente após o gate completo (340 testes); a abertura e o merge da PR ficam com o usuário, no GitHub. Permanece em aberto apenas o encerramento formal dos itens SEC que dependem de infraestrutura.
