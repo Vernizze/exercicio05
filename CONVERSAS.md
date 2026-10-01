@@ -1054,3 +1054,27 @@ Observação registrada, sem alteração: as mensagens de validação estrutural
 Permanecem pendentes de decisão do usuário: a forma de entrega (TODO-006) e o encerramento formal dos itens de segurança que dependem de infraestrutura.
 
 ---
+
+## Interação 038 — 1º de outubro de 2026
+
+**Modo: Act**
+
+### Usuário
+
+> antes de fechar tudo isso, gostaria de criar um README.md bem elaborado para esse projeto. Que ele tenha os dados de um REDME convencional mas também tenha um storytelling com base no CONVERSAS.md, mostrando a linha de raciocínio para os avaliadores desse meu teste, sabe? Algo que mostre com oas decisões foram tomadas, as dúvidas, ajsutes de curso, enfim, como foi o andamento do desenvolviemnto, entende?
+
+### Claude Code (assistente)
+
+O `README.md` foi reescrito para os avaliadores, a partir do commit `9ed9593`, no branch `20260930`.
+
+A parte convencional manteve as instruções já verificadas na Entrega G (execução com e sem Docker, obtenção de token, chamadas aos dois endpoints, tabela de erros, testes, gate e reconciliação) e ganhou um quadro de atendimento ao enunciado, um resumo da arquitetura, a estrutura do repositório e as limitações conhecidas.
+
+A parte narrativa foi escrita a partir deste histórico, em dez passos na ordem em que ocorreram, cada um com a interação de origem: a análise Zero Trust antes de executar o material; a regra de não iniciar nada funcional sem autorização; o defeito da inicialização do banco; a idempotência especificada antes do código; a pausa para unificar o controle; o primeiro ajuste de curso, do saldo calculado na hora para o saldo consolidado, com o cache descartado; a troca de assistente e o levantamento de escopo; o segundo ajuste de curso, da API anônima para JWT com titularidade; os defeitos que os testes revelaram no próprio projeto; e o fechamento dos itens do enunciado. Acompanham a narrativa uma linha do tempo com a evolução da suíte, uma tabela de decisões com as alternativas descartadas e uma tabela do que deu errado e como foi corrigido.
+
+Duas escolhas de redação foram feitas e comunicadas ao usuário para revisão: a narrativa está em primeira pessoa, na voz do responsável pelo projeto, por ser o autor das decisões registradas; e as falas do usuário foram parafraseadas, não citadas, exceto a expressão "está muito frágil essa ligação". O texto se limita ao que está registrado neste histórico; trechos que atribuiriam ao usuário motivos não registrados foram reescritos antes da conclusão.
+
+`TODO.md` foi atualizado para refletir o novo papel do README e a ampliação do TODO-006. Nenhum código-fonte, teste ou configuração foi alterado.
+
+O gate completo foi executado ao final e passou: restore bloqueado, auditoria direta e transitiva sem vulnerabilidades conhecidas, secret scanning sem achados, formatação e analisadores aprovados, build Release com zero avisos e zero erros, 294 testes aprovados e cobertura com nova execução em 294/294. A fixture `Questao5/database.sqlite` manteve o SHA-256 `E355A3EDB7D73E7784A7467513248D530C27CC989C624A35D13A188B2AA8DD3C`. A alteração foi encerrada em commit documental isolado.
+
+---
