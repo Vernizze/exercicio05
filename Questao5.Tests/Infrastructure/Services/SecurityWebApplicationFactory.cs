@@ -12,9 +12,15 @@ namespace Questao5.Tests.Infrastructure.Services;
 internal sealed class SecurityWebApplicationFactory : WebApplicationFactory<Program>
 {
     private readonly TemporarySqliteDatabase database = new();
+    private readonly IReadOnlyDictionary<string, string?> configuration;
+    private readonly Action<IServiceCollection>? configureServices;
 
-    public SecurityWebApplicationFactory()
+    public SecurityWebApplicationFactory(
+        IReadOnlyDictionary<string, string?>? configuration = null,
+        Action<IServiceCollection>? configureServices = null)
     {
+        this.configuration = configuration ?? new Dictionary<string, string?>();
+        this.configureServices = configureServices;
         LoggerProvider = new TestLoggerProvider();
     }
 
@@ -23,12 +29,19 @@ internal sealed class SecurityWebApplicationFactory : WebApplicationFactory<Prog
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+
+        foreach (var value in configuration)
+        {
+            builder.UseSetting(value.Key, value.Value);
+        }
+
         builder.ConfigureAppConfiguration((_, configurationBuilder) =>
         {
-            configurationBuilder.AddInMemoryCollection(new Dictionary<string, string?>
+            var values = new Dictionary<string, string?>(configuration, StringComparer.OrdinalIgnoreCase)
             {
                 ["DatabaseName"] = database.ConnectionString
-            });
+            };
+            configurationBuilder.AddInMemoryCollection(values);
         });
         builder.ConfigureLogging(loggingBuilder =>
         {
@@ -47,6 +60,7 @@ internal sealed class SecurityWebApplicationFactory : WebApplicationFactory<Prog
                         manager.ApplicationParts.Add(new AssemblyPart(testAssembly));
                     }
                 });
+            configureServices?.Invoke(services);
         });
     }
 

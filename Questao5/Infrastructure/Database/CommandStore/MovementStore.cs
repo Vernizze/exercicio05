@@ -51,7 +51,7 @@ namespace Questao5.Infrastructure.Database.CommandStore
                     throw new IdempotencyConflictException();
                 }
 
-                return new CreateMovementResponse(ParseMovementId(idempotency.Result));
+                return new CreateMovementResponse(ParseMovementId(idempotency.Result), IsReplay: true);
             }
 
             var account = connection.QuerySingleOrDefault<AccountRecord>(
@@ -125,7 +125,7 @@ namespace Questao5.Infrastructure.Database.CommandStore
                 transaction);
 
             transaction.Commit();
-            return new CreateMovementResponse(movementId);
+            return new CreateMovementResponse(movementId, IsReplay: false);
         }
 
         private static string ParseMovementId(string? result)

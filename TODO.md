@@ -117,14 +117,15 @@ Essa falha pode afetar diretamente a disponibilidade da tabela `idempotencia`, a
 
 ### TODO-002 — Implementar idempotência no serviço de movimentação
 
-- **Estado:** Em andamento — núcleos C1 e C2 concluídos; limites operacionais e observabilidade C3 permanecem pendentes
+- **Estado:** Concluído em 1º de outubro de 2026 — entregas C1, C2 e C3 implementadas e validadas
 - **Prioridade:** Alta
-- **Próxima etapa:** Entrega C3 — timeout, rate limiting, concorrência e logs estruturados
+- **Próxima etapa:** manutenção evolutiva e integração futura com identidade autenticada, fora do escopo atual
 - **Dependência técnica:** TODO-001
 - **Estrutura de banco existente:** tabela `idempotencia`
 - **Especificação:** `ESPECIFICACAO_MOVIMENTACAO.md`
 - **Evidência C1:** comando e handler MediatR, normalização determinística, store SQLite com transação imediata, relógio e gerador de ID injetáveis e testes reais de atomicidade, repetição, conflito, rollback e concorrência.
 - **Evidência C2:** `POST /api/v1/movimentos`, DTO HTTP fechado, JSON estrito, validação automática, limite de corpo de 4 KiB, respostas 200/400/409/413 correlacionadas e testes de integração sobre banco descartável.
+- **Evidência C3:** timeout de 5 segundos com cancelamento, limites fixos global e específico por IP, concorrência máxima de 8 sem fila, respostas 429/504 correlacionadas, `Retry-After` quando calculável e eventos estruturados 5100–5105 com fingerprint SHA-256 truncado e sem dados bancários.
 
 #### Problema
 
@@ -156,6 +157,8 @@ Portanto, a existência da tabela representa somente uma estrutura inicial; o co
 - [x] Requisições concorrentes com a mesma chave não geram duplicidade.
 - [x] Falhas e rollbacks não deixam registros parciais.
 - [x] Existem testes unitários e de integração para sucesso, repetição, conflito, concorrência, rollback e contrato HTTP.
+- [x] Timeout, frequência, concorrência e logs estruturados estão implementados e cobertos por testes.
+- [x] Logs não registram chave integral, conta, valor, payload, SQL, caminho do banco ou mensagem bruta de exceção.
 
 ---
 
@@ -275,19 +278,20 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-008 — Implementar limites de recursos e proteção contra abuso
 
-- **Estado:** Planejado — limites do endpoint definidos; implementação pendente
+- **Estado:** Concluído em 1º de outubro de 2026 no escopo anônimo do exercício
 - **Prioridade:** Média; elevar para alta antes de disponibilizar os endpoints bancários
 - **Referenciais:** OWASP API4 e API6; CWE-770
-- **Evidência:** não há rate limiting, limites específicos de corpo, frequência, concorrência ou crescimento do fluxo de movimentação/idempotência.
+- **Evidência de origem:** não havia rate limiting, limites específicos de corpo, frequência, concorrência ou crescimento do fluxo de movimentação/idempotência.
 - **Decisão da Entrega B:** corpo de 4 KiB, timeout de 5 segundos, 30 requisições por minuto por IP no endpoint, limite global de 120 por minuto por IP, até 8 operações concorrentes sem fila e HTTP 429 para excesso. O uso de IP é controle compensatório restrito ao exercício anônimo.
+- **Evidência C3:** os controles foram implementados com middleware nativo do ASP.NET Core, configuração externalizável, filas desabilitadas, Problem Details correlacionado, `Retry-After` para janelas fixas e testes de frequência, concorrência e timeout. Limites por identidade, conta ou chave dependem de autenticação futura e não são alegados como atendidos.
 
 #### Critérios de aceite
 
-- [ ] Limites globais e por endpoint estão definidos e documentados.
+- [x] Limites globais e por endpoint estão definidos e documentados.
 - [ ] Limites por cliente, conta ou chave são aplicados conforme o modelo de identidade.
-- [ ] Excesso retorna HTTP 429 de forma consistente.
-- [ ] Timeouts, tamanho de entrada e concorrência são limitados.
-- [ ] Existem testes de abuso, rajada, repetição e exaustão de recursos.
+- [x] Excesso retorna HTTP 429 de forma consistente.
+- [x] Timeouts, tamanho de entrada e concorrência são limitados.
+- [x] Existem testes de abuso, rajada, repetição e exaustão de recursos aplicáveis ao escopo atual.
 
 ### SEC-009 — Centralizar tratamento seguro de erros
 
@@ -452,13 +456,14 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - **Planejamento da Entrega B:** `ESPECIFICACAO_MOVIMENTACAO.md` define testes HTTP, monetários, transacionais, idempotentes, concorrentes, de conflito, rollback, abuso, cancelamento e conteúdo seguro dos logs que serão obrigatórios na implementação de TODO-002.
 - **Evidência C1:** a suíte passou a ter 55 testes, incluindo 28 casos focados no núcleo da movimentação para canonicalização, limites monetários, tipos, contas, persistência, repetição, conflito, rollback, cancelamento e concorrência idêntica ou conflitante.
 - **Evidência C2:** a suíte passou a ter 72 testes, incluindo 17 casos HTTP para crédito, débito, repetição, conflito, contas inválidas, JSON malformado, campos ausentes, propriedade desconhecida, UUID, valores, tipo, media type e corpo de 4 KiB.
+- **Evidência C3:** a suíte passou a ter 79 testes, incluindo frequência global e específica, concorrência sem fila, timeout com cancelamento observado, eventos 5100–5105, fingerprint estável e ausência de dados sensíveis nos logs.
 
 #### Critérios de aceite
 
 - [x] Existe projeto de testes separado da aplicação web.
 - [x] A stack de testes adota xUnit v3 com Microsoft Testing Platform e NSubstitute, sem duplicar frameworks de mocking.
 - [x] Testes de integração usam infraestrutura de banco descartável e determinístico.
-- [x] São cobertos fluxo feliz HTTP, validações, idempotência, concorrência e rollback; logs específicos e abuso operacional serão cobertos em C3, e autenticação/autorização permanecem riscos aceitos para o exercício.
+- [x] São cobertos fluxo feliz HTTP, validações, idempotência, concorrência, rollback, timeout, abuso operacional e logs específicos; autenticação/autorização permanecem riscos aceitos para o exercício.
 - [ ] Testes são executados automaticamente no pipeline e impedem regressões conhecidas.
 - [x] Coleta de cobertura compatível com Microsoft Testing Platform v2 foi selecionada e validada com `coverlet.MTP 10.1.0`; `coverlet.collector` não é usado.
 
@@ -589,3 +594,4 @@ Estes itens são controles contínuos e não devem ser marcados globalmente como
 - **1º de outubro de 2026:** Entrega B concluída após autorização específica. O contrato HTTP, a regra monetária, a canonicalização idempotente, a transação concorrente, os limites, os eventos de log e a matriz de testes de TODO-002 foram definidos em `ESPECIFICACAO_MOVIMENTACAO.md`. TODO-002 passou de Bloqueado para Planejado, sem implementação funcional.
 - **1º de outubro de 2026:** Entrega C1 implementou o núcleo transacional e idempotente da movimentação com MediatR, Dapper e SQLite, sem endpoint HTTP. Testes cobrem regras, atomicidade, repetição, conflito, rollback, cancelamento e concorrência; TODO-002 passou a Em andamento, aguardando C2 e C3.
 - **1º de outubro de 2026:** Entrega C2 implementou `POST /api/v1/movimentos`, DTO fechado, JSON estrito, validação automática, Problem Details para conflito e limite de corpo de 4 KiB. A suíte atingiu 72 testes; C3 permanece pendente para limites operacionais e logs.
+- **1º de outubro de 2026:** Entrega C3 implementou timeout de 5 segundos, rate limits de 30 e 120 requisições por minuto por IP, concorrência máxima de 8 sem fila, respostas 429/504 correlacionadas e logs 5100–5105 sem dados bancários. A suíte atingiu 79 testes e TODO-002 foi concluído.

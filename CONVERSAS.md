@@ -516,3 +516,23 @@ Sucesso e repetição retornam HTTP 200 com `idMovimento`. Regras de conta retor
 Foram adicionados 17 testes HTTP para crédito, débito, repetição, conflito, conta inexistente e inativa, JSON inválido, campos ausentes, propriedade desconhecida, UUID não canônico, valores inválidos, tipo inválido, espaços externos na conta, media type e corpo acima de 4 KiB. A suíte completa atingiu 72/72 testes antes do gate final. Timeout, rate limiting, limite de concorrência e logs específicos permanecem em C3.
 
 ---
+
+## Interação 021 — 1º de outubro de 2026
+
+**Modo: Act**
+
+### Usuário
+
+> Autorizou o início da Entrega C3.
+
+### Cline (assistente)
+
+Foram configurados controles nativos do ASP.NET Core para a movimentação: timeout de 5 segundos respeitando o cancellation token, janela fixa específica de 30 requisições por minuto por IP, limite global de 120 por minuto por IP e no máximo 8 operações concorrentes no processo, sempre sem fila. Rejeições de frequência ou concorrência retornam HTTP 429 com Problem Details correlacionado e `Retry-After` quando a janela fixa fornece esse valor; timeout retorna HTTP 504 correlacionado.
+
+A resposta interna do núcleo passou a indicar se o resultado veio de repetição idempotente, sem alterar o JSON público. Foi criado o componente `MovementLogger` com Event IDs 5100 a 5105 para criação, repetição, conflito, regra de negócio, rollback inesperado e limite excedido. O fingerprint usa os primeiros 16 caracteres hexadecimais do SHA-256 da chave normalizada; chave integral, conta, valor, payload, SQL, caminho e mensagem bruta de exceção não são registrados.
+
+Foram adicionados sete testes operacionais e de observabilidade para frequência global e específica, concorrência sem fila, timeout com cancelamento observado, eventos estáveis, fingerprint e conteúdo seguro dos logs. Os testes focados passaram em 7/7 e a suíte completa passou em 79/79 antes do gate final.
+
+O gate final concluiu restore bloqueado, auditoria direta e transitiva sem vulnerabilidades conhecidas, secret scanning sem achados, formatação aprovada, build Release determinístico com zero avisos e zero erros, 79 testes aprovados e coleta de cobertura. A fixture `Questao5/database.sqlite` manteve o SHA-256 `E355A3EDB7D73E7784A7467513248D530C27CC989C624A35D13A188B2AA8DD3C`. Nenhum arquivo foi preparado no index e nenhum commit foi criado.
+
+---
