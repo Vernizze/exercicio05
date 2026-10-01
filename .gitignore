@@ -34,6 +34,29 @@ packages/
 *.tmp
 *.temp
 
+# Local databases and operational data
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+*.db-shm
+*.db-wal
+.data/
+!Questao5/database.sqlite
+
+# Local configuration, secrets and private keys
+.env
+.env.*
+!.env.example
+appsettings.Local.json
+appsettings.*.Local.json
+secrets.json
+*.secrets.json
+*.pfx
+*.p12
+*.pem
+*.key
+
 # OS metadata
 Thumbs.db
 Desktop.ini

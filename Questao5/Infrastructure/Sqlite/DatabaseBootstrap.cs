@@ -1,20 +1,18 @@
 ﻿using Dapper;
-using Microsoft.Data.Sqlite;
-
 namespace Questao5.Infrastructure.Sqlite
 {
     public class DatabaseBootstrap : IDatabaseBootstrap
     {
-        private readonly DatabaseConfig databaseConfig;
+        private readonly ISqliteConnectionFactory connectionFactory;
 
-        public DatabaseBootstrap(DatabaseConfig databaseConfig)
+        public DatabaseBootstrap(ISqliteConnectionFactory connectionFactory)
         {
-            this.databaseConfig = databaseConfig;
+            this.connectionFactory = connectionFactory;
         }
 
         public void Setup()
         {
-            using var connection = new SqliteConnection(databaseConfig.Name);
+            using var connection = connectionFactory.OpenConnection();
 
             var table = connection.Query<string>("SELECT name FROM sqlite_master WHERE type='table' AND (name = 'contacorrente' or name = 'movimento' or name = 'idempotencia');");
             var tableName = table.FirstOrDefault();

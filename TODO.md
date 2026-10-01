@@ -154,6 +154,383 @@ Portanto, a existência da tabela representa somente uma estrutura inicial; o co
 
 ---
 
+## Backlog de segurança identificado em 30 de setembro de 2026
+
+Esta seção registra os achados da análise estática realizada no branch `20260930` com base em OWASP API Security Top 10 2023, CWE Top 25 2025, NIST SSDF 1.1, OpenSSF, CIS Benchmarks e MITRE ATT&CK v19.2.
+
+Os itens abaixo não autorizam automaticamente alterações funcionais. Sua execução deverá respeitar dependências, decisões de arquitetura e autorização específica. A ausência de infraestrutura ou pipeline foi registrada como condição de avaliação, sem alegação de conformidade.
+
+### SEC-001 — Definir e implementar autenticação da API
+
+- **Estado:** Risco aceito exclusivamente para o escopo do exercício — não implementar
+- **Prioridade:** Alta
+- **Referenciais:** OWASP API2 e API5; CWE-306 e CWE-862; NIST SSDF PW.4
+- **Evidência:** `Program.cs` usa autorização, mas não registra autenticação, não executa `UseAuthentication` e os endpoints atuais não exigem identidade.
+- **Decisão:** por solicitação expressa do usuário, a API permanecerá sem autenticação neste desafio. A decisão não representa conformidade e não pode ser reutilizada em produção.
+
+#### Critérios de aceite
+
+- [x] A ausência de autenticação e o risco residual estão documentados.
+- [x] Está documentado que a decisão se limita ao exercício e é proibida para produção.
+- [ ] Aplicar controles compensatórios: TLS, rate limiting, limites de entrada, logs, correlação e redução de enumeração.
+- [ ] Reabrir este item antes de qualquer implantação real.
+
+### SEC-002 — Implementar autorização em nível de conta e função
+
+- **Estado:** Risco aceito exclusivamente para o escopo do exercício — autorização por titular não implementável sem identidade
+- **Prioridade:** Alta
+- **Referenciais:** OWASP API1, API3 e API5; CWE-284, CWE-639, CWE-862 e CWE-863
+- **Evidência:** não existe vínculo entre identidade, conta corrente e permissão para consultar saldo ou realizar movimentação.
+- **Decisão:** serão mantidas validações de existência, estado e propriedades mínimas, mas elas não serão tratadas como autorização.
+
+#### Critérios de aceite
+
+- [x] A impossibilidade de autorização por titular sem identidade está documentada.
+- [x] Está documentado que conta existente/ativa não equivale a conta autorizada.
+- [ ] DTOs devem expor apenas propriedades necessárias e impedir overposting.
+- [ ] Respostas devem reduzir enumeração e exposição desnecessária.
+- [ ] Reabrir este item antes de qualquer implantação real.
+
+### SEC-003 — Corrigir a validação parcial do bootstrap
+
+- **Estado:** Bloqueado — corresponde ao TODO-001
+- **Prioridade:** Alta
+- **Referenciais:** OWASP API8; CWE-703 e CWE-754; NIST SSDF PW.7 e PW.8
+- **Evidência:** `DatabaseBootstrap.Setup` encerra quando encontra qualquer uma das três tabelas esperadas.
+
+#### Critérios de aceite
+
+- [ ] Cada tabela, coluna, constraint e versão esperada é validada individualmente.
+- [ ] Banco parcial não é aceito como banco completo.
+- [ ] Estrutura incompatível produz falha segura e diagnóstico interno útil.
+- [ ] Existem testes para banco vazio, parcial, completo e incompatível.
+
+### SEC-004 — Tornar bootstrap e seed atômicos e concorrentes com segurança
+
+- **Estado:** Bloqueado — depende do TODO-001/SEC-003
+- **Prioridade:** Alta
+- **Referenciais:** CWE-362, CWE-367 e CWE-703; NIST SSDF PW.5, PW.7 e PW.8
+- **Evidência:** tabelas e contas iniciais são criadas por comandos separados, sem transação ou proteção para inicializações simultâneas.
+
+#### Critérios de aceite
+
+- [ ] Criação do esquema e seed são executados atomicamente.
+- [ ] Falhas provocam rollback completo.
+- [ ] Inicializações concorrentes não deixam esquema ou dados parciais.
+- [ ] Execuções repetidas preservam dados e não duplicam contas.
+- [ ] Existem testes de falha intermediária, rollback e concorrência.
+
+### SEC-005 — Definir representação monetária determinística
+
+- **Estado:** Bloqueado — requer decisão de compatibilidade com o enunciado e o esquema recebido
+- **Prioridade:** Alta
+- **Referenciais:** CWE-682 e CWE-1339; NIST SSDF PW.4 e PW.5
+- **Evidência:** a coluna `movimento.valor` está declarada como `REAL`, tipo de ponto flutuante binário inadequado para precisão financeira sem estratégia adicional.
+
+#### Critérios de aceite
+
+- [ ] A unidade de armazenamento, escala e regra de arredondamento estão documentadas.
+- [ ] A API usa `decimal` nos contratos e cálculos monetários.
+- [ ] É avaliado e decidido o uso de centavos em `INTEGER` ou uma mitigação compatível com o esquema exigido.
+- [ ] Saldo e movimentações mantêm precisão em casos limítrofes e repetidos.
+- [ ] Existem testes para centavos, arredondamento, limites e soma de muitos movimentos.
+
+### SEC-006 — Habilitar e testar integridade referencial SQLite
+
+- **Estado:** Em andamento — controle de conexão e banco concluído; validação da aplicação depende do endpoint de movimentação
+- **Prioridade:** Média
+- **Referenciais:** OWASP API8; CWE-20 e CWE-703
+- **Evidência de origem:** a string de conexão não habilitava explicitamente `Foreign Keys=True`; o comportamento efetivo dependia da conexão e da compilação da biblioteca nativa.
+- **Evidência atual:** `DatabaseConfig` força `Foreign Keys=True`; `SqliteConnectionFactory` centraliza a abertura, cria o diretório operacional e valida `PRAGMA foreign_keys`; o bootstrap usa a factory; testes confirmam o pragma e a rejeição de movimento órfão pelo banco.
+
+#### Critérios de aceite
+
+- [x] Foreign keys são habilitadas explicitamente em toda conexão aplicável.
+- [x] O bootstrap valida o estado de `PRAGMA foreign_keys`.
+- [ ] Movimento associado a conta inexistente é rejeitado pelo banco e pela aplicação.
+- [x] Existe teste de integração para registro órfão no banco; a cobertura da camada de aplicação será adicionada com o endpoint.
+
+### SEC-007 — Uniformizar o tipo da chave estrangeira de conta
+
+- **Estado:** Bloqueado — exige reconstrução/migração do esquema vinculada a SEC-003 e SEC-004
+- **Prioridade:** Média
+- **Referenciais:** CWE-20 e CWE-704; NIST SSDF PW.5
+- **Evidência:** `contacorrente.idcontacorrente` é `TEXT(37)`, enquanto `movimento.idcontacorrente` está declarado como `INTEGER(10)`.
+
+#### Critérios de aceite
+
+- [ ] Chave primária e chave estrangeira usam o mesmo tipo lógico.
+- [ ] Migração ou reconstrução preserva a integridade dos dados existentes.
+- [ ] Consultas e índices usam a representação uniforme.
+- [ ] Há teste de integração para relacionamento e consulta por conta.
+
+### SEC-008 — Implementar limites de recursos e proteção contra abuso
+
+- **Estado:** Bloqueado — depende da definição dos endpoints e identidade do cliente
+- **Prioridade:** Média; elevar para alta antes de disponibilizar os endpoints bancários
+- **Referenciais:** OWASP API4 e API6; CWE-770
+- **Evidência:** não há rate limiting, limites específicos de corpo, frequência, concorrência ou crescimento do fluxo de movimentação/idempotência.
+
+#### Critérios de aceite
+
+- [ ] Limites globais e por endpoint estão definidos e documentados.
+- [ ] Limites por cliente, conta ou chave são aplicados conforme o modelo de identidade.
+- [ ] Excesso retorna HTTP 429 de forma consistente.
+- [ ] Timeouts, tamanho de entrada e concorrência são limitados.
+- [ ] Existem testes de abuso, rajada, repetição e exaustão de recursos.
+
+### SEC-009 — Centralizar tratamento seguro de erros
+
+- **Estado:** Concluído em 30 de setembro de 2026
+- **Prioridade:** Média
+- **Referenciais:** OWASP API8; CWE-200 e CWE-209
+- **Evidência de origem:** não havia tratamento global explícito, `ProblemDetails` customizado ou contrato uniforme para exceções inesperadas.
+- **Evidência de conclusão:** `GlobalExceptionHandler` centraliza erros de negócio e exceções inesperadas; validação automática, erros 400 e erros 500 usam `ProblemDetails` correlacionado; respostas inesperadas não expõem mensagem, stack trace, caminho, SQL ou segredo; o evento interno 9000 registra somente correlation ID e tipo da exceção. Testes de integração cobrem validação, regra de negócio, exceção inesperada e conteúdo seguro do log.
+
+#### Critérios de aceite
+
+- [x] Exceções são tratadas centralmente.
+- [x] Respostas usam contrato consistente e identificador de correlação.
+- [x] Stack traces, caminhos, SQL, headers, segredos e detalhes internos não são enviados ao cliente.
+- [x] Logs internos preservam diagnóstico suficiente sem dados sensíveis.
+- [x] Existem testes de validação, erro de negócio e exceção inesperada.
+
+### SEC-010 — Remover supressões inseguras de nulabilidade
+
+- **Estado:** Concluído em 30 de setembro de 2026
+- **Prioridade:** Média
+- **Referenciais:** CWE-476; NIST SSDF PW.7
+- **Evidência de origem:** `Program.cs` e `DatabaseConfig.cs` desabilitavam warnings de nulabilidade em vez de garantir valores obrigatórios por construção.
+- **Evidência de conclusão:** `DatabaseConfig` agora exige valor não vazio por construção; `IDatabaseBootstrap` é resolvido com `GetRequiredService`; os testes cobrem valor válido, nulo, vazio e composto apenas por espaços; build Release concluído com zero warnings e zero erros.
+
+#### Critérios de aceite
+
+- [x] Serviços obrigatórios são resolvidos com falha explícita quando ausentes.
+- [x] Configurações obrigatórias são validadas durante a inicialização.
+- [x] Não há `#pragma` de nulabilidade nos pontos corrigidos.
+- [x] Build e testes cobrem configuração ausente ou inválida.
+
+### SEC-011 — Restringir hosts permitidos por ambiente
+
+- **Estado:** Bloqueado — depende da topologia de deploy
+- **Prioridade:** Média-baixa
+- **Referenciais:** OWASP API8; CIS Benchmark aplicável ao ambiente
+- **Evidência:** `AllowedHosts` está configurado como `*`.
+
+#### Critérios de aceite
+
+- [ ] Hosts esperados são definidos por ambiente.
+- [ ] Reverse proxy e forwarded headers são configurados e testados quando aplicáveis.
+- [ ] Requisições com Host indevido são rejeitadas.
+- [ ] A configuração de produção não depende de wildcard sem risco aceito documentado.
+
+### SEC-012 — Definir política TLS/HTTPS de produção
+
+- **Estado:** Bloqueado — depende da infraestrutura de deploy
+- **Prioridade:** Média
+- **Referenciais:** OWASP API8; CIS Benchmark aplicável; NIST SSDF PS.1
+- **Evidência:** a aplicação usa redirecionamento HTTPS, mas também escuta HTTP no perfil local e não existe topologia de produção definida.
+
+#### Critérios de aceite
+
+- [ ] O ponto de terminação TLS e a fronteira de confiança estão documentados.
+- [ ] A API de produção não aceita dados sensíveis por HTTP inseguro.
+- [ ] Certificados, protocolos e cifras seguem o benchmark da plataforma.
+- [ ] Forwarded headers e redirecionamentos não permitem spoofing ou loops.
+- [ ] A postura TLS é validada no ambiente de implantação.
+
+### SEC-013 — Isolar o banco SQLite versionado
+
+- **Estado:** Em andamento — isolamento local concluído; backup e permissões dependem do deploy
+- **Prioridade:** Média
+- **Referenciais:** NIST SSDF PS.1; OpenSSF; proteção de dados e artefatos
+- **Evidência de origem:** `Questao5/database.sqlite` era usado como banco operacional e podia receber acidentalmente movimentos, chaves idempotentes ou respostas.
+- **Evidência atual:** o banco operacional padrão passou para `.data/database.sqlite`, ignorado pelo Git; testes usam bancos exclusivos em `%TEMP%`; a fixture versionada é copiada como somente referência nos testes e possui SHA-256 validado automaticamente.
+
+#### Critérios de aceite
+
+- [x] O banco de referência permanece imutável ou é substituído por criação determinística.
+- [x] Desenvolvimento e testes usam cópias descartáveis fora dos arquivos rastreados.
+- [x] Hash e conteúdo esperado da fixture são verificáveis.
+- [x] Dados operacionais não são commitados.
+- [ ] A estratégia de backup e permissões é definida no deploy.
+
+### SEC-014 — Ampliar prevenção contra commit de segredos e configurações locais
+
+- **Estado:** Em andamento — prevenção e scanner local concluídos; integração ao pipeline depende de SEC-021
+- **Prioridade:** Média
+- **Referenciais:** NIST SSDF PS.1; OpenSSF; CWE-798
+- **Evidência de origem:** `.env`, `secrets.json`, `appsettings.Local.json` e outros arquivos locais sensíveis não eram ignorados.
+- **Evidência atual:** `.gitignore` cobre configurações locais, bancos operacionais, certificados e chaves privadas sem ocultar templates seguros; `scripts/Test-TrackedSecrets.ps1` verifica arquivos versionados e candidatos ao commit; o gate local passou sem achados.
+
+#### Critérios de aceite
+
+- [x] Padrões locais sensíveis são ignorados sem ocultar templates seguros necessários.
+- [x] A aplicação aceita configuração externa por providers nativos do ASP.NET Core; o mecanismo definitivo de produção será definido com o deploy.
+- [ ] Secret scanning é executado no repositório e no pipeline; a execução local está implementada e validada, mas ainda não existe pipeline.
+- [x] A revisão e o scanner local não encontraram segredo em código, configuração versionada, logs ou artefatos.
+
+### SEC-015 — Implementar logs estruturados de segurança
+
+- **Estado:** Bloqueado — depende dos fluxos funcionais e da estratégia de observabilidade
+- **Prioridade:** Média
+- **Referenciais:** MITRE ATT&CK v19.2; NIST SSDF RV.1; CWE-117
+- **Evidência:** o logger injetado não é utilizado e não há eventos explícitos para bootstrap, validação, autenticação, autorização, abuso ou idempotência.
+
+#### Critérios de aceite
+
+- [ ] Eventos possuem IDs estáveis, timestamp UTC, nível, componente, resultado e campos estruturados.
+- [ ] São registrados bootstrap, falhas de validação, autenticação, autorização, rate limiting, idempotência, rollback e exceções.
+- [ ] Campos controlados pelo usuário não permitem log forging.
+- [ ] Senhas, tokens, connection strings e payloads bancários completos não são registrados.
+- [ ] Eventos são associados a Detection Strategies/Analytics aplicáveis e testados.
+
+### SEC-016 — Implementar correlação e rastreabilidade de requisições
+
+- **Estado:** Concluído em 30 de setembro de 2026
+- **Prioridade:** Média-baixa
+- **Referenciais:** MITRE ATT&CK v19.2; NIST SSDF RV.1
+- **Evidência de origem:** não havia uso explícito de `TraceIdentifier`, `Activity` ou correlation ID.
+- **Evidência de conclusão:** `CorrelationIdMiddleware` define `HttpContext.TraceIdentifier`, adiciona tag à `Activity`, devolve `X-Correlation-ID` em toda resposta e aceita somente um identificador externo de até 64 caracteres formado por allowlist ASCII. Valores ausentes, múltiplos ou inválidos são substituídos. O identificador aparece em respostas normais, validações, erros de negócio, exceções e logs; não é usado como chave de idempotência.
+
+#### Critérios de aceite
+
+- [x] Toda resposta e evento relevante possui identificador de correlação.
+- [x] Correlation ID e chave de idempotência têm semânticas distintas.
+- [x] IDs externos são validados e normalizados antes do uso em logs.
+- [x] É possível rastrear a requisição entre entrada, resposta e erro; a associação com movimentações persistidas será mantida quando o fluxo bancário existir.
+
+### SEC-017 — Padronizar datas e horários
+
+- **Estado:** Em andamento — uso residual corrigido; contrato bancário ainda não existe
+- **Prioridade:** Baixa
+- **Referenciais:** CWE-682; qualidade e rastreabilidade operacional
+- **Evidência de origem:** o endpoint de exemplo usava `DateTime.Now`; o contrato bancário ainda não define UTC, fuso ou formato.
+- **Evidência atual:** o uso residual foi substituído por `DateTime.UtcNow`; testes e novas persistências de teste usam `DateTimeOffset.UtcNow` e formato round-trip `O`.
+
+#### Critérios de aceite
+
+- [x] Datas internas existentes usam UTC ou `DateTimeOffset`.
+- [ ] Formato externo e fuso da consulta de saldo estão documentados.
+- [ ] Persistência e serialização são determinísticas e independentes da cultura do servidor.
+- [ ] Existem testes para fuso e transição de data.
+
+### SEC-018 — Remover endpoint residual de exemplo
+
+- **Estado:** Pendente — executar quando endpoints reais estiverem disponíveis
+- **Prioridade:** Baixa
+- **Referenciais:** OWASP API9
+- **Evidência:** `/WeatherForecast` permanece exposto e não faz parte do requisito bancário.
+
+#### Critérios de aceite
+
+- [ ] Controller e modelo de exemplo são removidos.
+- [ ] Swagger e inventário contêm apenas endpoints intencionais.
+- [ ] Não permanecem rotas, modelos ou documentação de template sem uso.
+
+### SEC-019 — Criar suíte de testes de segurança e regressão
+
+- **Estado:** Em andamento — fundação criada; cobertura funcional crescerá com cada item
+- **Prioridade:** Alta
+- **Referenciais:** NIST SSDF PW.7, PW.8 e RV.1; OpenSSF
+- **Evidência de origem:** não existia projeto ou suíte de testes no repositório.
+- **Evidência atual:** `Questao5.Tests` usa lock file próprio, xUnit v3, Microsoft Testing Platform, NSubstitute, `WebApplicationFactory` e `coverlet.MTP`; dezesseis testes passam em Release. Há cobertura para configuração, banco temporário, integridade referencial, hash da fixture, correlação, validação, erro de negócio, exceção inesperada e logs sem dados sensíveis. A cobertura da aplicação foi coletada em formato Cobertura com 88,72% de linhas e 73,07% de branches.
+
+#### Critérios de aceite
+
+- [x] Existe projeto de testes separado da aplicação web.
+- [x] A stack de testes adota xUnit v3 com Microsoft Testing Platform e NSubstitute, sem duplicar frameworks de mocking.
+- [x] Testes de integração usam infraestrutura de banco descartável e determinístico.
+- [ ] São cobertos fluxo feliz HTTP, validações e logs; autenticação/autorização são riscos aceitos e abuso, idempotência, concorrência e rollback dependem dos fluxos bancários.
+- [ ] Testes são executados automaticamente no pipeline e impedem regressões conhecidas.
+- [x] Coleta de cobertura compatível com Microsoft Testing Platform v2 foi selecionada e validada com `coverlet.MTP 10.1.0`; `coverlet.collector` não é usado.
+
+### SEC-020 — Fortalecer gates de build e analisadores
+
+- **Estado:** Em andamento — gate local concluído; execução automática depende de SEC-021
+- **Prioridade:** Média
+- **Referenciais:** NIST SSDF PW.7 e PW.8; OpenSSF
+- **Evidência de origem:** não estavam configurados explicitamente `TreatWarningsAsErrors`, nível de análise, restore locked no gate ou build contínuo determinístico.
+- **Evidência atual:** `Directory.Build.props` habilita analisadores .NET 10 recomendados, code style em build, warnings como erros e build determinístico; `scripts/Invoke-SecurityGate.ps1` executa restore bloqueado, auditoria direta/transitiva, secret scanning, `dotnet format`, build CI, testes e cobertura. A única supressão é `CA1707` nos arquivos de teste, justificada pela convenção `Metodo_Cenario_Resultado`.
+
+#### Critérios de aceite
+
+- [x] Analisadores .NET estão habilitados em nível acordado.
+- [x] Warnings relevantes falham o build, com exceções justificadas.
+- [ ] CI usa restore bloqueado e build determinístico; o gate reproduzível está pronto, mas ainda não existe CI.
+- [ ] SAST e auditoria de dependências são executados automaticamente; analisadores e auditoria rodam no gate local, mas ainda não existe CI.
+- [x] Supressões possuem justificativa, escopo mínimo e revisão.
+
+### SEC-021 — Criar pipeline seguro e controles OpenSSF
+
+- **Estado:** Bloqueado — pipeline/plataforma ainda não definidos
+- **Prioridade:** Alta antes de release ou deploy
+- **Referenciais:** OpenSSF, SLSA, Sigstore; NIST SSDF PO, PS, PW e RV
+- **Evidência:** não há CI/CD, `SECURITY.md`, `CODEOWNERS`, automação de atualização, SBOM, assinatura ou proveniência.
+
+#### Critérios de aceite
+
+- [ ] Branch principal possui proteção e revisão obrigatória quando suportado.
+- [ ] Tokens, runners e jobs usam menor privilégio e isolamento de segredos.
+- [ ] Ações, ferramentas e imagens são fixadas por versão imutável ou digest.
+- [ ] Restore, build, testes, auditoria, SAST e secret scanning são gates obrigatórios.
+- [ ] Release gera SBOM, hashes e proveniência; assinatura é aplicada quando compatível.
+- [ ] `SECURITY.md`, ownership e processo de resposta a vulnerabilidades estão definidos.
+
+### SEC-022 — Aplicar CIS Benchmark ao ambiente de deploy
+
+- **Estado:** Não avaliável — infraestrutura ainda não definida
+- **Prioridade:** Alta antes de produção
+- **Referenciais:** CIS Benchmarks e CIS Software Supply Chain Security Benchmarks
+- **Evidência:** não há Dockerfile, infraestrutura como código, configuração de servidor, reverse proxy ou ambiente de implantação no repositório.
+
+#### Critérios de aceite
+
+- [ ] Plataforma, sistema operacional, runtime, proxy, contêiner e CI/CD estão inventariados.
+- [ ] Benchmarks e versões aplicáveis são identificados.
+- [ ] Level 1 é avaliado como baseline; Level 2 é avaliado conforme criticidade.
+- [ ] Hardening é testado antes da adoção e mantido como código quando possível.
+- [ ] Exceções e riscos residuais são documentados.
+
+### SEC-023 — Definir monitoramento e detecções orientados pelo MITRE ATT&CK
+
+- **Estado:** Bloqueado — depende do ambiente de observabilidade e dos eventos do SEC-015
+- **Prioridade:** Média; alta antes de produção
+- **Referenciais:** MITRE ATT&CK v19.2; NIST SSDF RV.1
+- **Evidência:** não existem retenção, alertas, métricas, dashboards, proteção de integridade ou validação de utilidade investigativa dos logs.
+
+#### Critérios de aceite
+
+- [ ] Ameaças e técnicas aplicáveis são mapeadas a Detection Strategies e Analytics atuais.
+- [ ] Alertas cobrem enumeração, abuso de fluxo, falhas em massa, repetição e adulteração.
+- [ ] Retenção, acesso, integridade, disponibilidade e privacidade dos logs estão definidos.
+- [ ] Cenários de detecção são testados e produzem evidência útil para investigação.
+- [ ] Há procedimento de triagem, resposta e melhoria após incidentes.
+
+### Controles positivos preservados
+
+- [x] Fonte NuGet restrita ao `nuget.org` com package source mapping.
+- [x] Lock file com hashes de conteúdo presente.
+- [x] Auditoria NuGet direta e transitiva habilitada no projeto.
+- [x] SDK fixado por `global.json`, sem versões preview.
+- [x] Dependências diretas usam versões explícitas.
+- [x] Swagger está condicionado ao ambiente Development no pipeline atual.
+- [x] Não foram encontrados segredos hardcoded, execução de comandos, SSRF, upload de arquivos ou CORS permissivo no código atual.
+- [x] Restore bloqueado validado em 30 de setembro de 2026 para a solução e para o novo lock file de testes.
+- [x] Auditoria direta e transitiva validada em 30 de setembro de 2026 sem pacotes vulneráveis conhecidos nas fontes configuradas.
+- [x] Build Release validado com zero warnings e zero erros; seis testes executados com sucesso.
+- [x] Hash SHA-256 de `Questao5/database.sqlite` permaneceu `E355A3EDB7D73E7784A7467513248D530C27CC989C624A35D13A188B2AA8DD3C` após restore, build e testes.
+
+### Limitações da análise
+
+- [x] Vulnerabilidades diretas e transitivas foram revalidadas após restore bloqueado; nenhuma vulnerabilidade conhecida foi reportada.
+- [x] O valor efetivo de `PRAGMA foreign_keys` foi confirmado em teste, incluindo rejeição de registro órfão.
+- [ ] Migrar `MediatR.Extensions.Microsoft.DependencyInjection` 11.1.0, pacote legado preexistente, em mudança separada e com testes de regressão do bootstrap.
+- [ ] Avaliar CIS somente quando a infraestrutura e o deploy forem definidos.
+- [ ] Reavaliar OWASP API1, API2, API3, API5 e API6 antes de qualquer implantação real; SEC-001 e SEC-002 são riscos aceitos apenas para este exercício.
+
+---
+
 ## Procedimento após a conclusão dos sete marcos
 
 1. Confirmar documentalmente a conclusão das sete fases de segurança.
@@ -165,8 +542,27 @@ Portanto, a existência da tabela representa somente uma estrutura inicial; o co
 
 Não existe, neste documento, autorização antecipada para alterar o estado das pendências funcionais ou implementá-las.
 
+## Guardrails permanentes de segurança
+
+- [ ] Confirmar o branch `20260930` antes de cada nova etapa de implementação.
+- [ ] Mapear cada endpoint e fluxo aos riscos aplicáveis do OWASP API Security Top 10 2023.
+- [ ] Revisar cada mudança contra as fraquezas aplicáveis do CWE Top 25 2025.
+- [ ] Aplicar as práticas PO, PS, PW e RV do NIST SSDF 1.1 durante o ciclo de desenvolvimento.
+- [ ] Avaliar novas dependências antes da inclusão e manter restore NuGet bloqueado, auditável e reproduzível.
+- [ ] Definir pipeline com menor privilégio, componentes fixados, isolamento de segredos e proteção de artefatos.
+- [ ] Gerar SBOM, hashes e proveniência/assinatura quando houver processo de release.
+- [ ] Identificar e validar o CIS Benchmark específico quando infraestrutura ou deploy forem definidos.
+- [ ] Definir logs estruturados, sem dados sensíveis, e casos de detecção orientados pelo MITRE ATT&CK.
+- [ ] Executar testes positivos, negativos, de abuso, concorrência e regressão proporcionais à mudança.
+- [ ] Documentar exceções, controles não aplicáveis e riscos residuais.
+- [ ] Consultar `DIRETRIZES_SEGURANCA.md` como gate obrigatório de toda tarefa futura.
+
+Estes itens são controles contínuos e não devem ser marcados globalmente como concluídos; sua aplicação deve ser comprovada em cada mudança relevante.
+
 ## Histórico de atualização deste TODO
 
 - **30 de setembro de 2026:** documento criado após análise estática Zero Trust. TODO-001 e TODO-002 registrados como bloqueados até a conclusão das sete fases de segurança.
 - **30 de setembro de 2026:** acrescentada barreira de aprovação manual. A conclusão das sete fases não desbloqueia automaticamente TODO-001 ou TODO-002; após a Fase 7, o trabalho deve parar e aguardar detalhes adicionais e autorização expressa do usuário.
 - **30 de setembro de 2026:** sete marcos de segurança concluídos. Relatório consolidado criado em `RELATORIO_SEGURANCA.md`. TODO-001 e TODO-002 permanecem bloqueados.
+- **30 de setembro de 2026:** adotados como guardrails permanentes OWASP API Security Top 10, CWE Top 25, CIS Benchmarks, NIST SSDF, OpenSSF e MITRE ATT&CK. Criado `DIRETRIZES_SEGURANCA.md`; o branch de trabalho definido é `20260930`.
+- **30 de setembro de 2026:** análise estática do código atual convertida no backlog SEC-001 a SEC-023, com prioridades, referenciais, evidências, dependências, critérios de aceite, controles positivos e limitações de avaliação.
