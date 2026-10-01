@@ -3,14 +3,16 @@ using Questao5.Application.Commands.Requests;
 using Questao5.Application.Exceptions;
 using Questao5.Application.Handlers;
 using Questao5.Application.Movements;
-using Questao5.Infrastructure.Database.CommandStore;
-using Questao5.Infrastructure.Database.QueryStore;
+using Questao5.Application.Queries.Requests;
+using Questao5.Application.Queries.Responses;
+using Questao5.Infrastructure.Database;
+using Questao5.Infrastructure.Services.Balances;
 using Questao5.Infrastructure.Sqlite;
 using Questao5.Tests.Infrastructure.Sqlite;
 
 namespace Questao5.Tests.Infrastructure.Database;
 
-public sealed class BalanceQueryStoreTests : IDisposable
+public sealed class BalancePersistenceTests : IDisposable
 {
     private const string ActiveAccountId = "FA99D033-7067-ED11-96C6-7C5DFA4A16C9";
     private const string ActiveAccountHolderId = "04b276dc-0f45-4efc-bffc-911110198733";
@@ -20,19 +22,21 @@ public sealed class BalanceQueryStoreTests : IDisposable
 
     private readonly TemporarySqliteDatabase database = new();
     private readonly SqliteConnectionFactory connectionFactory;
-    private readonly BalanceQueryStore store;
+    private readonly UnitOfWorkFactory unitOfWorkFactory;
+    private readonly GetBalanceQueryHandler balanceHandler;
 
-    public BalanceQueryStoreTests()
+    public BalancePersistenceTests()
     {
         connectionFactory = new SqliteConnectionFactory(new DatabaseConfig(database.ConnectionString));
         new DatabaseBootstrap(connectionFactory).Setup();
-        store = new BalanceQueryStore(connectionFactory);
+        unitOfWorkFactory = new UnitOfWorkFactory(connectionFactory);
+        balanceHandler = new GetBalanceQueryHandler(unitOfWorkFactory, TimeProvider.System);
     }
 
     [Fact]
     public void GetBalance_AccountWithoutMovements_ReturnsZeroWithTwoDecimalPlaces()
     {
-        var balance = store.GetBalance(ActiveAccountHolderId, ActiveAccountId, TestContext.Current.CancellationToken);
+        var balance = GetBalance(ActiveAccountHolderId, ActiveAccountId, TestContext.Current.CancellationToken);
 
         Assert.Equal(456, balance.AccountNumber);
         Assert.Equal("Eva Woodward", balance.HolderName);
@@ -54,7 +58,7 @@ public sealed class BalanceQueryStoreTests : IDisposable
     {
         SetProjection(ActiveAccountId, persistedCents);
 
-        var balance = store.GetBalance(ActiveAccountHolderId, ActiveAccountId, TestContext.Current.CancellationToken);
+        var balance = GetBalance(ActiveAccountHolderId, ActiveAccountId, TestContext.Current.CancellationToken);
 
         Assert.Equal(
             decimal.Parse(expectedBalance, System.Globalization.CultureInfo.InvariantCulture),
@@ -67,8 +71,7 @@ public sealed class BalanceQueryStoreTests : IDisposable
     [Fact]
     public async Task GetBalance_AfterMovements_ReturnsCreditsMinusDebits()
     {
-        var movementStore = new MovementStore(connectionFactory, new GuidGenerator(), TimeProvider.System);
-        var handler = new CreateMovementCommandHandler(movementStore);
+        var handler = new CreateMovementCommandHandler(unitOfWorkFactory, new GuidGenerator(), TimeProvider.System);
 
         foreach (var (amount, movementType) in new[] { (100.10m, "C"), (0.20m, "C"), (50.05m, "D") })
         {
@@ -82,7 +85,7 @@ public sealed class BalanceQueryStoreTests : IDisposable
                 TestContext.Current.CancellationToken);
         }
 
-        var balance = store.GetBalance(ActiveAccountHolderId, ActiveAccountId, TestContext.Current.CancellationToken);
+        var balance = GetBalance(ActiveAccountHolderId, ActiveAccountId, TestContext.Current.CancellationToken);
 
         Assert.Equal(50.25m, balance.Balance);
     }
@@ -93,7 +96,7 @@ public sealed class BalanceQueryStoreTests : IDisposable
         // 0,10 não tem representação binária exata: somado 200 vezes em double não resulta em 20,00.
         const int movementCount = 200;
         var handler = new CreateMovementCommandHandler(
-            new MovementStore(connectionFactory, new GuidGenerator(), TimeProvider.System));
+            unitOfWorkFactory, new GuidGenerator(), TimeProvider.System);
 
         for (var index = 0; index < movementCount; index++)
         {
@@ -107,17 +110,17 @@ public sealed class BalanceQueryStoreTests : IDisposable
                 TestContext.Current.CancellationToken);
         }
 
-        var balance = store.GetBalance(ActiveAccountHolderId, ActiveAccountId, TestContext.Current.CancellationToken);
+        var balance = GetBalance(ActiveAccountHolderId, ActiveAccountId, TestContext.Current.CancellationToken);
 
         Assert.Equal(20.00m, balance.Balance);
-        Assert.True(new BalanceReconciler(connectionFactory).Reconcile().IsConsistent);
+        Assert.True(new BalanceReconciler(unitOfWorkFactory).Reconcile().IsConsistent);
     }
 
     [Fact]
     public async Task GetBalance_CreditExactlyCancelledByDebit_ReturnsZeroWithTwoDecimalPlaces()
     {
         var handler = new CreateMovementCommandHandler(
-            new MovementStore(connectionFactory, new GuidGenerator(), TimeProvider.System));
+            unitOfWorkFactory, new GuidGenerator(), TimeProvider.System);
 
         foreach (var movementType in new[] { "C", "D" })
         {
@@ -131,7 +134,7 @@ public sealed class BalanceQueryStoreTests : IDisposable
                 TestContext.Current.CancellationToken);
         }
 
-        var balance = store.GetBalance(ActiveAccountHolderId, ActiveAccountId, TestContext.Current.CancellationToken);
+        var balance = GetBalance(ActiveAccountHolderId, ActiveAccountId, TestContext.Current.CancellationToken);
 
         Assert.Equal(0m, balance.Balance);
         Assert.Equal("0.00", balance.Balance.ToString(System.Globalization.CultureInfo.InvariantCulture));
@@ -140,7 +143,7 @@ public sealed class BalanceQueryStoreTests : IDisposable
     [Fact]
     public void GetBalance_AccountIdentifierInDifferentCase_FindsPersistedAccount()
     {
-        var balance = store.GetBalance(
+        var balance = GetBalance(
             ActiveAccountHolderId.ToUpperInvariant(),
             ActiveAccountId.ToLowerInvariant(),
             TestContext.Current.CancellationToken);
@@ -151,7 +154,7 @@ public sealed class BalanceQueryStoreTests : IDisposable
     [Fact]
     public void GetBalance_MissingAccount_ThrowsInvalidAccount()
     {
-        var exception = Assert.Throws<BusinessRuleException>(() => store.GetBalance(
+        var exception = Assert.Throws<BusinessRuleException>(() => GetBalance(
             ActiveAccountHolderId,
             "missing-account",
             TestContext.Current.CancellationToken));
@@ -164,11 +167,11 @@ public sealed class BalanceQueryStoreTests : IDisposable
     [InlineData(InactiveAccountId)]
     public void GetBalance_AccountOfAnotherHolder_ThrowsOwnershipDeniedIdenticalToMissingAccount(string accountId)
     {
-        var missing = Assert.Throws<BusinessRuleException>(() => store.GetBalance(
+        var missing = Assert.Throws<BusinessRuleException>(() => GetBalance(
             OtherAccountHolderId,
             "missing-account",
             TestContext.Current.CancellationToken));
-        var denied = Assert.Throws<AccountOwnershipDeniedException>(() => store.GetBalance(
+        var denied = Assert.Throws<AccountOwnershipDeniedException>(() => GetBalance(
             OtherAccountHolderId,
             accountId,
             TestContext.Current.CancellationToken));
@@ -182,7 +185,7 @@ public sealed class BalanceQueryStoreTests : IDisposable
     {
         Execute("DELETE FROM titularidade_conta WHERE idcontacorrente = @AccountId;", ActiveAccountId);
 
-        Assert.Throws<AccountOwnershipDeniedException>(() => store.GetBalance(
+        Assert.Throws<AccountOwnershipDeniedException>(() => GetBalance(
             ActiveAccountHolderId,
             ActiveAccountId,
             TestContext.Current.CancellationToken));
@@ -191,7 +194,7 @@ public sealed class BalanceQueryStoreTests : IDisposable
     [Fact]
     public void GetBalance_OwnInactiveAccount_ThrowsInactiveAccount()
     {
-        var exception = Assert.Throws<BusinessRuleException>(() => store.GetBalance(
+        var exception = Assert.Throws<BusinessRuleException>(() => GetBalance(
             InactiveAccountHolderId,
             InactiveAccountId,
             TestContext.Current.CancellationToken));
@@ -205,7 +208,7 @@ public sealed class BalanceQueryStoreTests : IDisposable
     {
         Execute("DELETE FROM saldo_conta WHERE idcontacorrente = @AccountId;", ActiveAccountId);
 
-        Assert.Throws<InvalidOperationException>(() => store.GetBalance(
+        Assert.Throws<InvalidOperationException>(() => GetBalance(
             ActiveAccountHolderId,
             ActiveAccountId,
             TestContext.Current.CancellationToken));
@@ -216,7 +219,7 @@ public sealed class BalanceQueryStoreTests : IDisposable
     {
         Execute("UPDATE saldo_conta SET saldo_centavos = 10.5 WHERE idcontacorrente = @AccountId;", ActiveAccountId);
 
-        Assert.Throws<InvalidOperationException>(() => store.GetBalance(
+        Assert.Throws<InvalidOperationException>(() => GetBalance(
             ActiveAccountHolderId,
             ActiveAccountId,
             TestContext.Current.CancellationToken));
@@ -228,7 +231,7 @@ public sealed class BalanceQueryStoreTests : IDisposable
         using var cancellationTokenSource = new CancellationTokenSource();
         cancellationTokenSource.Cancel();
 
-        Assert.Throws<OperationCanceledException>(() => store.GetBalance(
+        Assert.Throws<OperationCanceledException>(() => GetBalance(
             ActiveAccountHolderId,
             ActiveAccountId,
             cancellationTokenSource.Token));
@@ -240,8 +243,8 @@ public sealed class BalanceQueryStoreTests : IDisposable
         SetProjection(ActiveAccountId, 11525);
         var before = Snapshot();
 
-        store.GetBalance(ActiveAccountHolderId, ActiveAccountId, TestContext.Current.CancellationToken);
-        Assert.Throws<AccountOwnershipDeniedException>(() => store.GetBalance(
+        GetBalance(ActiveAccountHolderId, ActiveAccountId, TestContext.Current.CancellationToken);
+        Assert.Throws<AccountOwnershipDeniedException>(() => GetBalance(
             OtherAccountHolderId,
             ActiveAccountId,
             TestContext.Current.CancellationToken));
@@ -252,6 +255,18 @@ public sealed class BalanceQueryStoreTests : IDisposable
     public void Dispose()
     {
         database.Dispose();
+    }
+
+    // Exercita o handler de saldo com a unidade de trabalho e os repositórios reais.
+    private GetBalanceResponse GetBalance(
+        string accountHolderId,
+        string accountId,
+        CancellationToken cancellationToken)
+    {
+        return balanceHandler
+            .Handle(new GetBalanceQuery(accountHolderId, accountId), cancellationToken)
+            .GetAwaiter()
+            .GetResult();
     }
 
     private void SetProjection(string accountId, long balanceCents)

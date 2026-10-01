@@ -243,25 +243,30 @@ A implementação mantém as dependências já presentes: ASP.NET Core, MediatR,
 Fluxo implementado:
 
 ```text
-MovementController
+Controllers/MovementController
   -> IMediator.Send(CreateMovementCommand)
     -> CreateMovementCommandHandler
-      -> IMovementStore transacional
-        -> ISqliteConnectionFactory
+      -> IUnitOfWork (uma conexão, uma transação imediata)
+        -> repositórios de Idempotencia, ContaCorrente, TitularidadeConta, Movimento e SaldoConta
 ```
 
 Responsabilidades:
 
-- controller: contrato HTTP, status, obtenção do correntista a partir do token e envio ao Mediator;
+- controller (`Questao5/Controllers`): contrato HTTP, status, obtenção do correntista a partir do token e envio ao Mediator;
 - request/command: DTO mínimo e validações estruturais;
-- handler: orquestração do caso de uso;
-- store transacional: toda leitura e escrita dependente da atomicidade na mesma conexão/transação, incluindo titularidade e projeção de saldo;
-- normalizador idempotente: representação canônica e parse do resultado versionado;
+- normalizador: validação de valor e tipo e representação canônica da requisição;
+- handler: orquestra o caso de uso, na ordem da seção 4.5, usando a unidade de trabalho, os repositórios e as entidades;
+- entidades (`Domain/Entities`): `Movimento` cria o movimento com a data UTC no formato legado; `SaldoConta` aplica crédito ou débito em centavos com aritmética verificada; `Idempotencia` monta e lê o resultado versionado; `TitularidadeConta` diz se a conta pertence ao correntista; `ContaCorrente` traz a situação da conta;
+- `AccountAccessPolicy`: regra única "conta existe, é do titular e está ativa", compartilhada com a consulta de saldo;
+- repositórios: um por entidade, com leitura em `Infrastructure/Database/QueryStore` e escrita em `Infrastructure/Database/CommandStore`, e interfaces em `Domain/Repositories`; todo SQL é parametrizado;
+- unidade de trabalho (`IUnitOfWork`): entrega todos os repositórios ligados à mesma conexão e à mesma transação; confirmada com `Commit`, e descartada sem confirmação desfaz tudo;
 - relógio injetável: obtenção de UTC testável por `TimeProvider` nativo;
 - gerador de IDs injetável: testes determinísticos sem dependência adicional;
 - exceções de negócio: códigos estáveis tratados pelo mecanismo global.
 
-O acesso a conta, titularidade, movimento, saldo e idempotência não é dividido em repositórios que abram conexões independentes dentro do mesmo caso de uso.
+Há um repositório por tabela, mas nenhum abre conexão própria: a atomicidade entre movimento, saldo e idempotência é garantida pela unidade de trabalho. A conversão do `decimal` para o `REAL` legado acontece somente no repositório de escrita de `Movimento`.
+
+Até a refatoração de 1º de outubro de 2026, o acesso a dados ficava concentrado em um único `MovementStore`, sem entidades; o comportamento e o SQL executado são os mesmos.
 
 ## 8. Matriz de testes implementada
 
@@ -308,7 +313,7 @@ O acesso a conta, titularidade, movimento, saldo e idempotência não é dividid
 - falha após inserir o movimento reverte também o saldo;
 - movimentações concorrentes distintas não perdem atualização de saldo;
 - ausência da linha de projeção impede a movimentação;
-- a reconciliação detecta saldo ou movimento alterado fora do store.
+- a reconciliação detecta saldo ou movimento alterado fora da aplicação.
 
 ### Segurança, abuso e observabilidade
 

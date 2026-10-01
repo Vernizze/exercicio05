@@ -41,7 +41,7 @@ Além do enunciado, por decisão minha durante o trabalho:
 - ambiente Docker Compose para rodar tudo com um comando;
 - um gate local que roda auditoria de dependências, verificação de segredos, formatação, build e testes.
 
-A suíte tem 294 testes. O estado detalhado e as pendências estão em [`TODO.md`](TODO.md).
+A suíte tem 340 testes. O estado detalhado e as pendências estão em [`TODO.md`](TODO.md).
 
 ## Como executar
 
@@ -167,13 +167,17 @@ POST /api/v1/movimentos                      GET /api/v1/contas/{id}/saldo
   MovementController                            BalanceController
         |  MediatR                                     |  MediatR
   CreateMovementCommandHandler                  GetBalanceQueryHandler
-        |                                              |
-  MovementStore (escrita)                       BalanceQueryStore (leitura)
+        |  unidade de trabalho:                        |  unidade de trabalho:
         |  uma transação imediata                      |  um snapshot de leitura
         v                                              v
+  repositórios de escrita e leitura             repositórios de leitura
+  (CommandStore e QueryStore)                   (QueryStore)
+        |                                              |
   movimento + idempotencia + saldo_conta        contacorrente + titularidade_conta + saldo_conta
 ```
 
+- **Entidades e repositórios.** Cada tabela tem uma entidade em `Domain/Entities` (`ContaCorrente`, `Movimento`, `Idempotencia`, `SaldoConta`, `TitularidadeConta`) e um repositório por entidade, com SQL parametrizado via Dapper: leitura em `QueryStore`, escrita em `CommandStore`. Os handlers orquestram; as regras ficam nas entidades.
+- **Uma transação para tudo.** A unidade de trabalho entrega todos os repositórios ligados à mesma conexão e à mesma transação. É ela que garante que movimento, saldo e idempotência sejam gravados juntos ou desfeitos juntos.
 - **Escrita e leitura separadas (CQRS local).** A movimentação grava o movimento, o registro de idempotência e o saldo consolidado na mesma transação. A consulta lê só o saldo consolidado, por chave primária, sem percorrer o histórico.
 - **Banco.** As três tabelas do proponente (`contacorrente`, `movimento`, `idempotencia`) não foram alteradas. Foram acrescentadas duas: `saldo_conta` (saldo em centavos inteiros) e `titularidade_conta` (conta → correntista). A fixture `Questao5/database.sqlite` recebida permanece intacta, conferida por hash.
 - **Dinheiro.** `decimal` em toda a aplicação e centavos inteiros no saldo consolidado. O `REAL` do schema recebido só é tocado na fronteira de persistência.
@@ -195,11 +199,11 @@ powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\script
 
 O gate executa, nesta ordem: restore em modo bloqueado, auditoria de dependências diretas e transitivas, verificação de segredos nos arquivos, formatação e analisadores, build Release com avisos tratados como erro, testes e cobertura. Cada entrega só foi fechada com o gate aprovado.
 
-Sobre os 294 testes:
+Sobre os 340 testes:
 
 - não dependem de Docker: usam bancos SQLite temporários e tokens assinados por uma chave gerada no próprio teste;
 - a maior parte exercita a API de verdade, por HTTP e com SQLite real, incluindo concorrência, rollback, timeout e limites;
-- os dois handlers têm testes unitários com as dependências substituídas por NSubstitute;
+- os dois handlers têm testes unitários com a unidade de trabalho e os repositórios substituídos por NSubstitute, e as entidades têm testes próprios;
 - os exemplos de erro do Swagger são comparados com as respostas reais, para a documentação não divergir do comportamento.
 
 Reconciliação do saldo consolidado com os movimentos (encerra com código 0 quando não há divergência):
@@ -212,7 +216,7 @@ docker compose run --rm api --reconciliar-saldos
 
 ## A história do desenvolvimento
 
-O trabalho aconteceu em dois dias, 30 de setembro e 1º de outubro de 2026, em 38 interações registradas. A regra que estabeleci logo na primeira foi esta: toda conversa vai para um arquivo, deixando claro quem fala e se estamos **planejando** ou **executando**. O resto desta seção segue a ordem em que as coisas aconteceram.
+O trabalho aconteceu em dois dias, 30 de setembro e 1º de outubro de 2026, em 41 interações registradas. A regra que estabeleci logo na primeira foi esta: toda conversa vai para um arquivo, deixando claro quem fala e se estamos **planejando** ou **executando**. O resto desta seção segue a ordem em que as coisas aconteceram.
 
 ### 1. Antes de rodar qualquer coisa
 
@@ -302,6 +306,14 @@ Três achados dessa reta final não estavam em nenhum plano. Conto porque mostra
 
 Por último vieram os três itens do levantamento. O dos códigos de erro era requisito, e a correção foi pequena: as regras de valor e tipo estavam no lugar errado, validadas cedo demais, e bastou tirá-las de lá para que os códigos chegassem ao cliente (Interação 035). Depois, a documentação do Swagger e os testes unitários que faltavam (Interação 037).
 
+### 11. Terceiro ajuste de curso: entidades e repositórios
+
+Com tudo funcionando, fiz uma pergunta de revisão: criamos entidades? Como gravamos e lemos do banco? A resposta foi que não havia entidades. O acesso a dados estava em dois "stores" que executavam SQL e também decidiam as regras, e as pastas `Domain/Entities` e `Domain/Enumerators`, que o projeto recebido já previa, tinham ficado vazias (Interação 039).
+
+Não gostei da abordagem e pedi uma mais tradicional: uma entidade por tabela, um repositório por entidade e as controllers em uma pasta na raiz do projeto. Antes de planejar, o levantamento trouxe um fato relevante: a posição das controllers e o esqueleto de pastas tinham vindo do proponente, não eram escolha nossa. Decidi mover as controllers mesmo assim, por ser o convencional, e manter os repositórios dentro das pastas `QueryStore` e `CommandStore` que ele desenhou (Interação 040).
+
+O cuidado principal foi a transação. Antes, movimento, saldo e idempotência eram gravados juntos porque estavam no mesmo store; com um repositório por tabela, isso passou a ser garantido por uma unidade de trabalho. A refatoração não mudou a API, o banco nem os logs: os testes de atomicidade, concorrência e reconciliação que já existiam passaram sem mudar de expectativa, e o ambiente em contêiner reproduziu os mesmos resultados (Interação 041).
+
 ### Linha do tempo
 
 | Quando | Entrega | Testes |
@@ -317,6 +329,7 @@ Por último vieram os três itens do levantamento. O dos códigos de erro era re
 | 01/10 | Docker Compose | 211 |
 | 01/10 | Códigos `INVALID_VALUE` e `INVALID_TYPE` | 233 |
 | 01/10 | Testes unitários do handler e Swagger documentado | 294 |
+| 01/10 | Controllers na raiz, entidades, repositórios e unidade de trabalho | 340 |
 
 ## Decisões e alternativas descartadas
 
@@ -333,6 +346,9 @@ Por último vieram os três itens do levantamento. O dos códigos de erro era re
 | Tabelas novas e aditivas | Alterar as tabelas do proponente | Preserva o schema e a fixture recebidos |
 | Conta alheia responde como inexistente | HTTP 403 | Um 403 confirmaria que a conta existe |
 | `mock-oauth2-server` como emissor | Keycloak | Proporcional a um desafio técnico; a limitação está documentada |
+| Uma entidade por tabela e um repositório por entidade, com unidade de trabalho | Stores que concentravam SQL e regras | Abordagem mais tradicional e fácil de reconhecer; a unidade de trabalho preserva a transação única |
+| Repositórios nas pastas `QueryStore` e `CommandStore` | Pasta `Repositories` nova | Aproveita o esqueleto CQRS que veio no projeto recebido |
+| Controllers em `Questao5/Controllers` | Mantê-las em `Infrastructure/Services/Controllers`, onde vieram | É a posição convencional em projetos ASP.NET |
 | Um exemplo de erro por situação no Swagger, verificado por teste | Exemplos escritos à mão, sem verificação | Documentação que diverge do comportamento é pior que nenhuma |
 
 ## O que deu errado e como foi corrigido
@@ -348,6 +364,7 @@ Por último vieram os três itens do levantamento. O dos códigos de erro era re
 | Exemplos do Swagger diferentes da resposta real | Teste que compara os dois | Exemplos corrigidos |
 | Teste falhando uma vez a cada oito execuções | Repetição da suíte | Causa removida; 40 execuções seguidas sem falha |
 | Gate reprovou uma entrega por formatação | O próprio gate | Arquivo reformatado e gate executado de novo |
+| Acesso a dados sem entidades, com as pastas de domínio vazias | Minha pergunta de revisão, com tudo já funcionando | Entidades, repositórios e unidade de trabalho, sem mudar comportamento |
 
 ## Limitações conhecidas
 
@@ -364,11 +381,16 @@ Por último vieram os três itens do levantamento. O dos códigos de erro era re
 
 ```text
 Questao5/                     API
-  Application/                comandos, consultas, handlers e regras
+  Controllers/                controllers, DTOs (Models) e filtros
+  Application/                comandos, consultas, handlers e regras de aplicação
+  Domain/
+    Entities/                 uma entidade por tabela
+    Enumerators/              tipo de movimento
+    Repositories/             interfaces dos repositórios e da unidade de trabalho
   Infrastructure/
-    Database/                 escrita (CommandStore) e leitura (QueryStore)
-    Services/                 controllers, autenticação, limites, logs, erros, OpenAPI
-    Sqlite/                   conexão, inicialização, validação de schema, projeção de saldo
+    Database/                 unidade de trabalho e repositórios: leitura (QueryStore) e escrita (CommandStore)
+    Services/                 autenticação, limites, logs, erros, correlação, OpenAPI
+    Sqlite/                   conexão, inicialização e validação de schema
   database.sqlite             fixture recebida, mantida intacta
   Questão 5.docx              enunciado
 Questao5.Tests/               testes unitários e de integração

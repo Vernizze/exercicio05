@@ -5,9 +5,8 @@ using System.Text.Json.Nodes;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using NSubstitute;
-using NSubstitute.ExceptionExtensions;
-using Questao5.Application.Balances;
+using Questao5.Application.Queries.Requests;
+using Questao5.Application.Queries.Responses;
 
 namespace Questao5.Tests.Infrastructure.Services;
 
@@ -331,24 +330,23 @@ public sealed class OpenApiDocumentationTests : IDisposable
 
             case "INTERNAL_ERROR":
                 {
-                    var store = Substitute.For<IBalanceQueryStore>();
-                    store.GetBalance(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                        .Throws(new InvalidOperationException("falha interna de teste"));
-                    return await GetBalanceAsync(CreateBalanceFactory(store), EvaAccountId);
+                    return await GetBalanceAsync(
+                        CreateBalanceFactory((_, _) => throw new InvalidOperationException("falha interna de teste")),
+                        EvaAccountId);
                 }
 
             case "REQUEST_TIMEOUT":
                 {
-                    var store = Substitute.For<IBalanceQueryStore>();
-                    store.GetBalance(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                        .Returns(call =>
-                        {
-                            var cancellationToken = call.Arg<CancellationToken>();
-                            cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(10));
-                            cancellationToken.ThrowIfCancellationRequested();
-                            return new AccountBalance(456, "Eva Woodward", 0.00m);
-                        });
-                    return await GetBalanceAsync(CreateBalanceFactory(store, timeoutSeconds: 1), EvaAccountId);
+                    return await GetBalanceAsync(
+                        CreateBalanceFactory(
+                            (_, cancellationToken) =>
+                            {
+                                cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(10));
+                                cancellationToken.ThrowIfCancellationRequested();
+                                throw new InvalidOperationException("Fluxo inalcançável.");
+                            },
+                            timeoutSeconds: 1),
+                        EvaAccountId);
                 }
 
             default:
@@ -373,7 +371,9 @@ public sealed class OpenApiDocumentationTests : IDisposable
             }));
     }
 
-    private SecurityWebApplicationFactory CreateBalanceFactory(IBalanceQueryStore store, int timeoutSeconds = 5)
+    private SecurityWebApplicationFactory CreateBalanceFactory(
+        Func<GetBalanceQuery, CancellationToken, GetBalanceResponse> handle,
+        int timeoutSeconds = 5)
     {
         return Track(new SecurityWebApplicationFactory(
             new Dictionary<string, string?>
@@ -382,8 +382,7 @@ public sealed class OpenApiDocumentationTests : IDisposable
             },
             services =>
             {
-                services.RemoveAll<IBalanceQueryStore>();
-                services.AddSingleton(store);
+                ControlledBalanceHandler.Register(services, handle);
             }));
     }
 

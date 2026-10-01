@@ -7,8 +7,8 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.OpenApi;
 using Questao5.Application.Balances;
 using Questao5.Application.Movements;
-using Questao5.Infrastructure.Database.CommandStore;
-using Questao5.Infrastructure.Database.QueryStore;
+using Questao5.Domain.Repositories;
+using Questao5.Infrastructure.Database;
 using Questao5.Infrastructure.Services.Balances;
 using Questao5.Infrastructure.Services.Correlation;
 using Questao5.Infrastructure.Services.Errors;
@@ -262,12 +262,11 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddMediatR(Assembly.GetExecutingAssembly());
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IMovementIdGenerator, GuidMovementIdGenerator>();
-builder.Services.AddSingleton<IMovementStore, MovementStore>();
 builder.Services.AddSingleton<IBalanceReconciler, BalanceReconciler>();
-builder.Services.AddSingleton<IBalanceQueryStore, BalanceQueryStore>();
 
 builder.Services.AddSingleton(new DatabaseConfig(builder.Configuration["DatabaseName"]));
 builder.Services.AddSingleton<ISqliteConnectionFactory, SqliteConnectionFactory>();
+builder.Services.AddSingleton<IUnitOfWorkFactory, UnitOfWorkFactory>();
 builder.Services.AddSingleton<IDatabaseBootstrap, DatabaseBootstrap>();
 
 builder.Services.AddEndpointsApiExplorer();

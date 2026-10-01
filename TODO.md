@@ -40,6 +40,8 @@ TODO-003 (códigos `INVALID_VALUE` e `INVALID_TYPE`) foi autorizado e concluído
 
 TODO-004 (documentação Swagger) e TODO-005 (teste unitário do handler de movimentação) foram autorizados e concluídos na sequência, também na mesma data. Com eles, os pontos extras do enunciado estão atendidos: Dapper, CQRS, Mediator, Swagger documentado com exemplos e testes unitários com NSubstitute.
 
+Por fim, o usuário pediu a reorganização do acesso a dados em entidades e repositórios e a mudança das controllers para a raiz do projeto, registradas e concluídas como TODO-007.
+
 Próximos passos, todos dependentes de decisão do usuário: a forma de entrega de TODO-006 e o encerramento formal dos itens SEC que dependem de infraestrutura.
 
 ### Entrega C4 — limpeza, documentação, gate e commit funcional
@@ -233,6 +235,23 @@ Achados do levantamento de fechamento de escopo (Interação 029 de `CONVERSAS.m
 
 - [x] Instruções de execução da API, dos testes e do gate.
 - [ ] Forma de entrega definida.
+
+#### TODO-007 — Entidades, repositórios por tabela e controllers na raiz
+
+- **Estado:** Concluído em 1º de outubro de 2026
+- **Prioridade:** Média — organização do código, sem requisito funcional
+- **Origem:** revisão do usuário. O acesso a dados estava concentrado em `MovementStore` e `BalanceQueryStore`, sem entidades, e as pastas `Domain/Entities` e `Domain/Enumerators` do projeto recebido estavam vazias. O usuário pediu uma abordagem mais tradicional.
+- **Decisões do usuário:** mover as controllers para `Questao5/Controllers`, embora a posição anterior fosse a do projeto recebido; manter os repositórios nas pastas `QueryStore` e `CommandStore` do proponente; nomear entidades e propriedades em português, como as tabelas.
+- **Evidência:** entidades `ContaCorrente`, `Movimento`, `Idempotencia`, `SaldoConta` e `TitularidadeConta` e enum `TipoMovimento` em `Domain`; interfaces em `Domain/Repositories`; um repositório de leitura e um de escrita por entidade em `Infrastructure/Database`; `UnitOfWork` e `UnitOfWorkFactory`, que ligam todos os repositórios à mesma conexão e transação; handlers orquestrando o caso de uso; `AccountAccessPolicy` como regra única de acesso à conta; seed e preenchimento do saldo na migração usando os repositórios. Foram removidos `IMovementStore`, `MovementStore`, `IBalanceQueryStore` e `BalanceQueryStore`.
+- **Garantia de que nada mudou:** contrato HTTP, schema, mensagens e logs são os mesmos. Os testes de atomicidade, rollback, concorrência, reconciliação e migração passaram sem mudança de expectativa; a suíte foi executada 20 vezes seguidas sem falha; e o ambiente Docker Compose reproduziu os mesmos resultados de antes.
+- **Diferenças internas registradas:** a consulta de saldo passou de uma instrução SQL com junções para três leituras dentro da mesma transação de leitura; a atualização do saldo passou a gravar o saldo e a versão calculados pela entidade, dentro da transação imediata; as pastas `Domain/Language` e as subpastas `Requests`/`Responses` de `CommandStore` e `QueryStore` continuam vazias.
+
+- [x] Uma entidade para cada tabela, em `Domain/Entities`.
+- [x] Um repositório por entidade, com leitura em `QueryStore` e escrita em `CommandStore`.
+- [x] Movimento, saldo e idempotência continuam gravados na mesma transação.
+- [x] Controllers, DTOs e filtros em `Questao5/Controllers`.
+- [x] Handlers cobertos por testes unitários com a unidade de trabalho e os repositórios substituídos; entidades com testes próprios.
+- [x] Nenhuma mudança de comportamento; gate completo aprovado e fixture com o SHA-256 esperado.
 
 ## Regra de priorização
 
@@ -715,6 +734,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - **Evidência TODO-003:** a suíte passou a ter 233 testes. Foram acrescentados os casos HTTP de `INVALID_VALUE` e `INVALID_TYPE`, de precedência entre valor, tipo e conta, de não reserva da chave de idempotência e de ausência do valor recebido na resposta e no log; os casos de campo ausente, `null` e `valor` não numérico passaram a compor o teste de erro estrutural.
 - **Evidência TODO-005:** a suíte passou a ter 248 testes, com os testes unitários de `CreateMovementCommandHandler` usando NSubstitute.
 - **Evidência TODO-004:** a suíte passou a ter 294 testes, com os testes do documento OpenAPI: resumo, descrição e conjunto exato de status por operação, descrição e exemplo de cada atributo, headers, exemplos nomeados por situação de erro e a comparação de cada exemplo com a resposta real.
+- **Evidência TODO-007:** a suíte passou a ter 340 testes. Os testes unitários dos dois handlers foram reescritos para substituir a unidade de trabalho e os repositórios com NSubstitute, verificando inclusive a ordem das operações e a ausência de escrita nos caminhos de rejeição; foram acrescentados testes das entidades; os testes com SQLite real que exercitavam os antigos stores foram mantidos, caso a caso, exercitando os handlers com a unidade de trabalho real; e os testes HTTP de timeout, concorrência e erro interno do saldo passaram a substituir o handler em vez do store.
 - **Correções da infraestrutura de testes no TODO-004:** foi eliminada uma falha intermitente, observada em cerca de uma a cada oito execuções: o descarte do banco temporário chamava `SqliteConnection.ClearAllPools()`, que é global e podia fechar a conexão de outro teste em paralelo. Os bancos temporários passaram a ser abertos sem pool, e a chamada foi removida; a suíte foi então executada 40 vezes seguidas sem falha. Também foi corrigido um teste de inicialização que deixava uma pasta temporária vazia para trás a cada caso.
 
 #### Critérios de aceite
@@ -866,3 +886,4 @@ Estes itens são controles contínuos e não devem ser marcados globalmente como
 - **1º de outubro de 2026:** TODO-003 concluído após autorização específica. As regras de negócio sobre valor e tipo saíram do DTO da movimentação, que passou a validar somente a estrutura; valor e tipo inválidos agora respondem HTTP 400 com `code` `INVALID_VALUE` e `INVALID_TYPE`, conferidos antes de qualquer acesso ao banco. Campo ausente continua sendo erro estrutural, sem `code`. A suíte passou de 211 para 233 testes e o gate completo foi aprovado; a fixture manteve o SHA-256 esperado. TODO-004, TODO-005 e TODO-006 permanecem pendentes de decisão.
 - **1º de outubro de 2026:** TODO-005 e TODO-004 concluídos após autorização específica. O handler de movimentação recebeu testes unitários com NSubstitute, sem mudança em código de produção. O documento OpenAPI passou a trazer descrição geral, resumo e descrição das operações, todos os retornos possíveis, descrição e exemplo de cada atributo, exemplos nomeados de cada situação de erro e headers de resposta, com um teste que compara cada exemplo com a resposta real; nenhuma dependência foi acrescentada e nenhum comportamento foi alterado. Foi eliminada uma falha intermitente preexistente na infraestrutura de testes, causada por `SqliteConnection.ClearAllPools()`. A suíte passou de 233 para 294 testes e o gate completo foi aprovado; a fixture manteve o SHA-256 esperado. Restam a forma de entrega do TODO-006 e os itens SEC de infraestrutura.
 - **1º de outubro de 2026:** `README.md` reescrito para os avaliadores, com as instruções de execução e uso, o quadro de atendimento ao enunciado, a arquitetura em resumo e uma narrativa do desenvolvimento baseada em `CONVERSAS.md`: decisões, alternativas descartadas, ajustes de curso, erros encontrados e limitações. Nenhum código foi alterado; o gate completo foi aprovado com 294 testes.
+- **1º de outubro de 2026:** TODO-007 concluído a pedido do usuário. As controllers foram movidas para `Questao5/Controllers`. O acesso a dados foi reorganizado em uma entidade por tabela, um repositório de leitura e um de escrita por entidade, nas pastas `QueryStore` e `CommandStore`, e uma unidade de trabalho que mantém movimento, saldo e idempotência na mesma transação; os handlers passaram a orquestrar o caso de uso e os antigos stores foram removidos. Nenhum comportamento mudou: contrato HTTP, schema, mensagens e logs são os mesmos. A suíte passou de 294 para 340 testes, foi executada 20 vezes seguidas sem falha, e o gate completo foi aprovado; a fixture manteve o SHA-256 esperado.

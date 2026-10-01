@@ -1,6 +1,7 @@
 ﻿using Questao5.Application.Commands.Requests;
 using Questao5.Application.Exceptions;
 using Questao5.Application.Movements;
+using Questao5.Domain.Enumerators;
 
 namespace Questao5.Tests.Application.Movements;
 
@@ -22,7 +23,7 @@ public sealed class MovementRequestNormalizerTests
         Assert.Equal("04b276dc-0f45-4efc-bffc-911110198733", result.AccountHolderId);
         Assert.Equal("FA99D033-7067-ED11-96C6-7C5DFA4A16C9", result.AccountId);
         Assert.Equal(125.5m, result.Amount);
-        Assert.Equal('C', result.MovementType);
+        Assert.Equal(TipoMovimento.Credito, result.MovementType);
         Assert.Equal(
             "v2|titular=04b276dc-0f45-4efc-bffc-911110198733|conta=FA99D033-7067-ED11-96C6-7C5DFA4A16C9|valor=125.50|tipo=C",
             result.CanonicalRequest);

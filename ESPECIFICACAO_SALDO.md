@@ -319,35 +319,37 @@ A implementação usa apenas as dependências já existentes: ASP.NET Core, Medi
 Fluxo implementado:
 
 ```text
-BalanceController
+Controllers/BalanceController
   -> IMediator.Send(GetBalanceQuery)
     -> GetBalanceQueryHandler
-      -> IBalanceQueryStore
-        -> ISqliteConnectionFactory
+      -> IUnitOfWork (uma conexão, uma transação de leitura)
+        -> repositórios de leitura de ContaCorrente, TitularidadeConta e SaldoConta
 ```
 
 Responsabilidades:
 
-- `BalanceController`: rota, exigência de autenticação, validação estrutural, status HTTP, headers de cache e envio ao Mediator;
-- `GetBalanceQuery`: identificador normalizado da conta e identificador do correntista obtido do token;
-- `GetBalanceQueryHandler`: orquestração da consulta, sem SQL ou regra de serialização;
-- `IBalanceQueryStore`: contrato de leitura da conta, da titularidade e do saldo consolidado;
-- `BalanceQueryStore`: snapshot SQLite, SQL parametrizado, validação de conta e titularidade e conversão de centavos para `decimal`;
+- `BalanceController` (`Questao5/Controllers`): rota, exigência de autenticação, validação estrutural, status HTTP, headers de cache e envio ao Mediator;
+- `GetBalanceQuery`: identificador da conta e identificador do correntista obtido do token;
+- `GetBalanceQueryHandler`: normaliza os identificadores, abre a unidade de trabalho de leitura, aplica a regra de acesso, lê o saldo e só então obtém o instante da consulta;
+- `AccountAccessPolicy`: regra única "conta existe, é do titular e está ativa", compartilhada com a movimentação;
+- entidades (`Domain/Entities`): `ContaCorrente`, `TitularidadeConta` e `SaldoConta`; esta última converte os centavos em `decimal` com escala 2, sem ponto flutuante;
+- repositórios de leitura (`Infrastructure/Database/QueryStore`): `ContaCorrenteQueryStore`, `TitularidadeContaQueryStore` e `SaldoContaQueryStore`, com SQL parametrizado; as interfaces ficam em `Domain/Repositories`;
 - `GetBalanceResponse`: resposta interna com número, titular, instante UTC e saldo;
 - `GetBalanceHttpResponse`: contrato público fechado;
 - `BalanceLogger`: Event IDs 5200–5203 e fingerprint seguro;
 - `TimeProvider`: relógio UTC injetável para resposta e testes determinísticos;
-- `BusinessRuleException`: reutilização dos códigos `INVALID_ACCOUNT` e `INACTIVE_ACCOUNT`, por meio de `AccountRuleViolations`, compartilhado com a movimentação para que as mensagens sejam idênticas;
-- `AccountIdentifierAttribute`: validação estrutural do parâmetro de rota, respondida pelo mesmo erro de validação por campo usado no restante da API;
-- `BalanceProjection`: conversão de centavos para `decimal` com escala 2, compartilhada com a escrita.
+- `BusinessRuleException`: reutilização dos códigos `INVALID_ACCOUNT` e `INACTIVE_ACCOUNT`, por meio de `AccountRuleViolations`, para que as mensagens sejam idênticas às da movimentação;
+- `AccountIdentifierAttribute`: validação estrutural do parâmetro de rota, respondida pelo mesmo erro de validação por campo usado no restante da API.
 
-O handler obtém o instante da consulta do `TimeProvider` somente depois de o store concluir a leitura. O store lê conta, titularidade e saldo em uma única instrução, dentro de uma transação de leitura não imediata; saldo ausente ou não inteiro em `saldo_conta` é tratado como falha interna, nunca como zero ou valor arredondado.
+Conta, titularidade e saldo são lidos por três consultas dentro da mesma transação de leitura não imediata, o que garante o mesmo snapshot para as três. Saldo ausente ou não inteiro em `saldo_conta` é tratado como falha interna, nunca como zero ou valor arredondado.
 
-No lado de escrita, `IMovementStore`/`MovementStore` passam a manter a projeção: dentro da transação imediata existente, após inserir o movimento e antes de confirmar, atualizam `saldo_conta` com o valor em centavos e o incremento de `versao`. A idempotência continua sendo verificada antes de qualquer escrita.
+No lado de escrita, `CreateMovementCommandHandler` mantém o saldo consolidado: dentro da transação imediata, depois de inserir o movimento e antes de confirmar, a entidade `SaldoConta` aplica o valor em centavos e incrementa `versao`, e o repositório grava o resultado. A idempotência continua sendo verificada antes de qualquer escrita.
 
-O schema evolui por migração versionada, elevando `PRAGMA user_version` para `2` e criando `saldo_conta` e `titularidade_conta` de forma idempotente, com preenchimento inicial transacional. Nenhuma alteração será feita na fixture versionada.
+O preenchimento inicial e a reconciliação ficam em `BalanceProjection` e usam os repositórios: o de leitura de `Movimento` converte e valida cada `REAL` legado individualmente. A reconciliação sob demanda é o `BalanceReconciler`, que abre uma unidade de trabalho de leitura.
 
-Pastas e namespaces devem seguir a separação atual entre `Application`, `Infrastructure/Database/CommandStore`, `Infrastructure/Database/QueryStore` e `Infrastructure/Services`.
+O schema evolui por migração versionada, elevando `PRAGMA user_version` para `2` e criando `saldo_conta` e `titularidade_conta` de forma idempotente, com preenchimento inicial transacional. A fixture versionada não é alterada.
+
+Até a refatoração de 1º de outubro de 2026, a leitura era feita por um único `BalanceQueryStore`, com uma só instrução SQL e sem entidades; o resultado devolvido é o mesmo.
 
 ## 9. Matriz de testes implementada
 

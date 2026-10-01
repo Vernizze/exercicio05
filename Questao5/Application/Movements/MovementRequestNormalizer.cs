@@ -1,12 +1,14 @@
 ﻿using Questao5.Application.Commands.Requests;
 using Questao5.Application.Exceptions;
+using Questao5.Domain.Entities;
+using Questao5.Domain.Enumerators;
 using System.Globalization;
 
 namespace Questao5.Application.Movements
 {
     public static class MovementRequestNormalizer
     {
-        public const decimal MaximumAmount = 9999999999.99m;
+        public const decimal MaximumAmount = Movimento.ValorMaximo;
 
         public static NormalizedMovementRequest Normalize(CreateMovementCommand command)
         {
@@ -45,7 +47,7 @@ namespace Questao5.Application.Movements
                     "O valor da movimentação deve ser positivo, possuir no máximo duas casas decimais e respeitar o limite permitido.");
             }
 
-            if (command.MovementType is not "C" and not "D")
+            if (!TipoMovimentoExtensions.TentarConverter(command.MovementType, out var movementType))
             {
                 throw new BusinessRuleException(
                     "INVALID_TYPE",
@@ -64,7 +66,7 @@ namespace Questao5.Application.Movements
                 normalizedAccountHolderId,
                 normalizedAccountId,
                 command.Amount,
-                command.MovementType[0],
+                movementType,
                 canonicalRequest);
         }
 
@@ -79,6 +81,6 @@ namespace Questao5.Application.Movements
         string AccountHolderId,
         string AccountId,
         decimal Amount,
-        char MovementType,
+        TipoMovimento MovementType,
         string CanonicalRequest);
 }

@@ -7,7 +7,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
-using Questao5.Application.Balances;
+using Questao5.Domain.Repositories;
 using Questao5.Application.Handlers;
 using Questao5.Application.Queries.Requests;
 using Questao5.Application.Queries.Responses;
@@ -138,7 +138,7 @@ public sealed partial class BalanceEndpointTests
             services.RemoveAll<IRequestHandler<GetBalanceQuery, GetBalanceResponse>>();
             services.AddTransient<IRequestHandler<GetBalanceQuery, GetBalanceResponse>>(provider =>
                 new GetBalanceQueryHandler(
-                    provider.GetRequiredService<IBalanceQueryStore>(),
+                    provider.GetRequiredService<IUnitOfWorkFactory>(),
                     new FixedTimeProvider(FixedUtcNow)));
         });
         using var client = factory.CreateAuthenticatedClient(EvaSubject);
@@ -320,8 +320,8 @@ public sealed partial class BalanceEndpointTests
     public async Task Get_UnexpectedFailure_Returns500AndEvent5202WithoutExceptionMessage()
     {
         const string sensitiveMessage = "SELECT saldo FROM C:\\secret\\database.db";
-        using var factory = CreateFactoryWithStore(
-            new DelegatingBalanceQueryStore((_, _, _) => throw new InvalidOperationException(sensitiveMessage)));
+        using var factory = CreateFactoryWithHandler(
+            (_, _) => throw new InvalidOperationException(sensitiveMessage));
         using var client = factory.CreateAuthenticatedClient(EvaSubject);
 
         using var response = await GetBalanceAsync(client, EvaAccountId);
@@ -384,8 +384,8 @@ public sealed partial class BalanceEndpointTests
         using var release = new ManualResetEventSlim(initialState: false);
         var twoEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var entered = 0;
-        using var factory = CreateFactoryWithStore(
-            new DelegatingBalanceQueryStore((_, _, cancellationToken) =>
+        using var factory = CreateFactoryWithHandler(
+            (_, cancellationToken) =>
             {
                 if (Interlocked.Increment(ref entered) == 2)
                 {
@@ -393,8 +393,8 @@ public sealed partial class BalanceEndpointTests
                 }
 
                 release.Wait(cancellationToken);
-                return new AccountBalance(456, "Eva Woodward", 0.00m);
-            }),
+                return new GetBalanceResponse(456, "Eva Woodward", DateTimeOffset.UtcNow, 0.00m);
+            },
             concurrencyPermitLimit: 2);
         using var client = factory.CreateAuthenticatedClient(EvaSubject);
 
@@ -416,8 +416,8 @@ public sealed partial class BalanceEndpointTests
     public async Task Get_OperationTimeout_CancelsReadAndReturnsCorrelated504()
     {
         var cancellationObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var factory = CreateFactoryWithStore(
-            new DelegatingBalanceQueryStore((_, _, cancellationToken) =>
+        using var factory = CreateFactoryWithHandler(
+            (_, cancellationToken) =>
             {
                 cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(10));
 
@@ -428,7 +428,7 @@ public sealed partial class BalanceEndpointTests
 
                 cancellationToken.ThrowIfCancellationRequested();
                 throw new InvalidOperationException("Fluxo inalcançável.");
-            }),
+            },
             timeoutSeconds: 1);
         using var client = factory.CreateAuthenticatedClient(EvaSubject);
 
@@ -512,8 +512,8 @@ public sealed partial class BalanceEndpointTests
         });
     }
 
-    private static SecurityWebApplicationFactory CreateFactoryWithStore(
-        IBalanceQueryStore store,
+    private static SecurityWebApplicationFactory CreateFactoryWithHandler(
+        Func<GetBalanceQuery, CancellationToken, GetBalanceResponse> handle,
         int timeoutSeconds = 5,
         int concurrencyPermitLimit = 8)
     {
@@ -528,8 +528,7 @@ public sealed partial class BalanceEndpointTests
             configuration,
             services =>
             {
-                services.RemoveAll<IBalanceQueryStore>();
-                services.AddSingleton(store);
+                ControlledBalanceHandler.Register(services, handle);
             });
     }
 
@@ -595,24 +594,6 @@ public sealed partial class BalanceEndpointTests
 
     [GeneratedRegex(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}\+00:00$")]
     private static partial Regex RoundTripUtcPattern();
-
-    private sealed class DelegatingBalanceQueryStore : IBalanceQueryStore
-    {
-        private readonly Func<string, string, CancellationToken, AccountBalance> getBalance;
-
-        public DelegatingBalanceQueryStore(Func<string, string, CancellationToken, AccountBalance> getBalance)
-        {
-            this.getBalance = getBalance;
-        }
-
-        public AccountBalance GetBalance(
-            string accountHolderId,
-            string accountId,
-            CancellationToken cancellationToken)
-        {
-            return getBalance(accountHolderId, accountId, cancellationToken);
-        }
-    }
 
     private sealed class FixedTimeProvider : TimeProvider
     {

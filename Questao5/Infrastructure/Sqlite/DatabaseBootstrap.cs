@@ -1,5 +1,8 @@
 ﻿using Dapper;
 using Microsoft.Data.Sqlite;
+using Questao5.Application.Balances;
+using Questao5.Domain.Entities;
+using Questao5.Infrastructure.Database;
 
 namespace Questao5.Infrastructure.Sqlite
 {
@@ -40,13 +43,15 @@ namespace Questao5.Infrastructure.Sqlite
             }
 
             EnsureSchema(connection, transaction);
-            SeedAccounts(connection, transaction);
-            SeedAccountHolders(connection, transaction);
-            BalanceProjection.Backfill(connection, transaction);
+
+            // Seed e saldo inicial usam os repositórios, dentro da mesma transação da migração.
+            using var unitOfWork = new UnitOfWork(connection, transaction, ownsTransaction: false);
+            SeedAccounts(unitOfWork);
+            BalanceProjection.Backfill(unitOfWork);
 
             if (schemaVersion < CurrentSchemaVersion)
             {
-                ValidateBalanceReconciliation(connection, transaction);
+                ValidateBalanceReconciliation(unitOfWork);
             }
 
             ValidateDatabaseIntegrity(connection, transaction);
@@ -152,41 +157,22 @@ namespace Questao5.Infrastructure.Sqlite
             }
         }
 
-        private static void SeedAccounts(SqliteConnection connection, SqliteTransaction transaction)
+        private static void SeedAccounts(UnitOfWork unitOfWork)
         {
-            const string sql = """
-                INSERT INTO contacorrente(idcontacorrente, numero, nome, ativo)
-                VALUES (@Id, @Number, @Name, @Active)
-                ON CONFLICT(idcontacorrente) DO NOTHING;
-                """;
-
-            foreach (var account in AccountSeeds)
+            foreach (var seed in AccountSeeds)
             {
-                connection.Execute(sql, account, transaction);
+                unitOfWork.ContaCorrenteCommand.InserirSeAusente(
+                    new ContaCorrente(seed.Id, seed.Number, seed.Name, seed.Active == 1));
+
+                // O titular só é registrado quando a conta ainda não possui um; titularidades existentes são preservadas.
+                unitOfWork.TitularidadeContaCommand.InserirSeAusente(
+                    new TitularidadeConta(seed.Id, seed.HolderId));
             }
         }
 
-        private static void SeedAccountHolders(SqliteConnection connection, SqliteTransaction transaction)
+        private static void ValidateBalanceReconciliation(UnitOfWork unitOfWork)
         {
-            const string sql = """
-                INSERT INTO titularidade_conta(idcontacorrente, idcorrentista)
-                SELECT idcontacorrente, @HolderId
-                FROM contacorrente
-                WHERE idcontacorrente = @Id
-                ON CONFLICT(idcontacorrente) DO NOTHING;
-                """;
-
-            foreach (var account in AccountSeeds)
-            {
-                connection.Execute(sql, account, transaction);
-            }
-        }
-
-        private static void ValidateBalanceReconciliation(
-            SqliteConnection connection,
-            SqliteTransaction transaction)
-        {
-            if (BalanceProjection.FindDivergentAccounts(connection, transaction).Count > 0)
+            if (BalanceProjection.FindDivergentAccounts(unitOfWork).Count > 0)
             {
                 throw new InvalidDatabaseSchemaException(
                     "A projeção de saldo diverge dos movimentos persistidos.");

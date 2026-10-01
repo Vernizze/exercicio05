@@ -1,8 +1,10 @@
 using MediatR;
-using Questao5.Application.Balances;
+using Questao5.Application.Accounts;
 using Questao5.Application.Exceptions;
 using Questao5.Application.Queries.Requests;
 using Questao5.Application.Queries.Responses;
+using Questao5.Domain.Entities;
+using Questao5.Domain.Repositories;
 
 namespace Questao5.Application.Handlers
 {
@@ -10,12 +12,12 @@ namespace Questao5.Application.Handlers
     {
         public const int MaximumAccountIdLength = 37;
 
-        private readonly IBalanceQueryStore balanceQueryStore;
+        private readonly IUnitOfWorkFactory unitOfWorkFactory;
         private readonly TimeProvider timeProvider;
 
-        public GetBalanceQueryHandler(IBalanceQueryStore balanceQueryStore, TimeProvider timeProvider)
+        public GetBalanceQueryHandler(IUnitOfWorkFactory unitOfWorkFactory, TimeProvider timeProvider)
         {
-            this.balanceQueryStore = balanceQueryStore;
+            this.unitOfWorkFactory = unitOfWorkFactory;
             this.timeProvider = timeProvider;
         }
 
@@ -38,16 +40,26 @@ namespace Questao5.Application.Handlers
                 throw AccountRuleViolations.InvalidAccount();
             }
 
-            var balance = balanceQueryStore.GetBalance(accountHolderId.ToString("D"), accountId, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            ContaCorrente conta;
+            SaldoConta saldo;
+
+            // Transação de leitura: conta, titularidade e saldo vêm do mesmo snapshot,
+            // e a consulta não disputa a reserva de escritor com a movimentação.
+            using (var unitOfWork = unitOfWorkFactory.BeginRead())
+            {
+                conta = AccountAccessPolicy.EnsureAccessible(unitOfWork, accountId, accountHolderId.ToString("D"));
+                saldo = unitOfWork.SaldoContaQuery.ObterPorConta(conta.IdContaCorrente)
+                    ?? throw new InvalidOperationException("O saldo consolidado da conta não existe.");
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
 
             // O instante da consulta é obtido somente depois de a leitura consistente terminar.
             var queriedAt = timeProvider.GetUtcNow();
 
-            return Task.FromResult(new GetBalanceResponse(
-                balance.AccountNumber,
-                balance.HolderName,
-                queriedAt,
-                balance.Balance));
+            return Task.FromResult(new GetBalanceResponse(conta.Numero, conta.Nome, queriedAt, saldo.Saldo));
         }
     }
 }

@@ -1078,3 +1078,94 @@ Duas escolhas de redação foram feitas e comunicadas ao usuário para revisão:
 O gate completo foi executado ao final e passou: restore bloqueado, auditoria direta e transitiva sem vulnerabilidades conhecidas, secret scanning sem achados, formatação e analisadores aprovados, build Release com zero avisos e zero erros, 294 testes aprovados e cobertura com nova execução em 294/294. A fixture `Questao5/database.sqlite` manteve o SHA-256 `E355A3EDB7D73E7784A7467513248D530C27CC989C624A35D13A188B2AA8DD3C`. A alteração foi encerrada em commit documental isolado.
 
 ---
+
+## Interação 039 — 1º de outubro de 2026
+
+**Modo: Plan**
+
+### Usuário
+
+> nao crioamos entidades, certo? Como gravamos e lemos do BD?
+
+### Claude Code (assistente)
+
+Foi confirmado que não havia entidades: as pastas `Domain/Entities`, `Domain/Enumerators` e `Domain/Language`, declaradas no projeto recebido, estavam vazias. A gravação era feita por `MovementStore` e a leitura por `BalanceQueryStore`, com SQL escrito à mão e executado pelo Dapper, sem mapeamento de tabela para classe; os resultados caíam em classes privadas de cada store.
+
+Foi explicado onde estavam as regras sem entidades: valor e tipo em `MovementRequestNormalizer`; conta existente, titular e situação dentro dos dois stores, com as mensagens em `AccountRuleViolations`; e centavos e saldo em `BalanceProjection`.
+
+Foram apontados dois pontos que um avaliador poderia notar: as pastas de domínio vazias, quando a estrutura recebida sugeria entidades e um enum para o tipo de movimento; e a sequência "conta existe, é do titular e está ativa" escrita duas vezes, uma em cada store. Foram oferecidos dois caminhos: introduzir um domínio pequeno ou registrar no README que a ausência de entidades era deliberada. Nenhum arquivo foi alterado.
+
+---
+
+## Interação 040 — 1º de outubro de 2026
+
+**Modo: Plan**
+
+### Usuário
+
+> certo, não gostei da abrodagem, vaos a uma mais tradicional. Crie entidades de Banco para todas as tabelas, seus respectivos e seus repositórios 
+> outro ponto estranho foi onde foram colocadas as controllers, elas usualmente tem uma pasta delas na raiz do .csproj
+
+### Claude Code (assistente)
+
+Antes de planejar, foi conferido o primeiro commit do repositório, que guarda o projeto como recebido, e foi informado ao usuário que a posição das controllers e o esqueleto de pastas vieram do proponente: o `WeatherForecastController` original já estava em `Questao5/Infrastructure/Services/Controllers`, e o `.csproj` recebido já declarava `Domain/Entities`, `Domain/Enumerators`, `Domain/Language`, `Application/Commands`, `Application/Queries`, `Application/Handlers` e `Infrastructure/Database/CommandStore` e `QueryStore`.
+
+Com esse fato, três decisões foram submetidas ao usuário, que respondeu:
+
+1. **Controllers:** mover para a raiz (`Questao5/Controllers`), mesmo sendo a posição atual a do projeto recebido.
+2. **Repositórios:** um por entidade, nas pastas do proponente, com leitura em `QueryStore` e escrita em `CommandStore`.
+3. **Idioma:** português, como as tabelas, com propriedades iguais às colunas.
+
+Foi então elaborado e aprovado o plano: uma entidade por tabela e o enum `TipoMovimento` em `Domain`; interfaces dos repositórios em `Domain/Repositories`; uma unidade de trabalho para manter movimento, saldo e idempotência na mesma transação; handlers orquestrando o caso de uso; inicialização do banco usando os repositórios para o seed e o saldo inicial; e a mudança das controllers com preservação do histórico dos arquivos. O plano fixou que nenhum comportamento mudaria e que os testes existentes seriam a rede de segurança. Nenhum arquivo foi alterado nesta interação.
+
+---
+
+## Interação 041 — 1º de outubro de 2026
+
+**Modo: Act**
+
+### Usuário
+
+> Aprovou o plano da Interação 040 e autorizou sua execução. Depois de uma interrupção da sessão, pediu: "tente novamente".
+
+### Claude Code (assistente)
+
+A execução partiu do commit `bcd4fdb`, no branch `20260930`, com workspace limpo. A sessão foi interrompida depois de a refatoração estar implementada e de a suíte passar pela primeira vez; ao retomar, o estado do workspace foi conferido, o build e a suíte foram refeitos, e o trabalho seguiu da verificação em diante.
+
+#### Controllers na raiz
+
+`MovementController`, `BalanceController`, `Models` e `Filters` foram movidos de `Questao5/Infrastructure/Services/Controllers` para `Questao5/Controllers`, com o namespace `Questao5.Controllers`, usando `git mv` para preservar o histórico. Rotas, DTOs e documentação OpenAPI não mudaram. A mudança foi encerrada no commit `a00bd5c`, depois do build, da suíte (294 testes) e da verificação de formatação.
+
+#### Entidades, repositórios e unidade de trabalho
+
+Foram criados em `Questao5/Domain`:
+
+- as entidades `ContaCorrente`, `TitularidadeConta`, `Movimento`, `Idempotencia` e `SaldoConta`, uma por tabela, com o comportamento que antes estava espalhado: `SaldoConta` aplica crédito ou débito em centavos com aritmética verificada e expõe o saldo em `decimal` com escala 2; `Movimento` cria o movimento com a data UTC no formato legado; `Idempotencia` monta e lê o resultado versionado; `TitularidadeConta` informa se a conta pertence ao correntista;
+- o enum `TipoMovimento`, no lugar do `char` usado antes;
+- as interfaces dos repositórios e da unidade de trabalho, em `Domain/Repositories`.
+
+Em `Questao5/Infrastructure/Database` foram criados um repositório de leitura e um de escrita por entidade, nas pastas `QueryStore` e `CommandStore`, todos com SQL parametrizado via Dapper, e as classes `UnitOfWork` e `UnitOfWorkFactory`. A unidade de trabalho entrega todos os repositórios ligados à mesma conexão e à mesma transação — imediata para escrita, de leitura para consulta —, confirma com `Commit` e, descartada sem confirmação, desfaz tudo. É ela que preserva a gravação conjunta de movimento, saldo e idempotência.
+
+Os dois handlers passaram a orquestrar o caso de uso, na mesma ordem de antes. A sequência "conta existe, é do titular e está ativa", que estava escrita uma vez em cada store, passou a existir somente em `AccountAccessPolicy`. A inicialização do banco manteve em SQL o que não tem entidade (criação e validação das tabelas, versão do schema e verificações de integridade) e passou a usar os repositórios para o seed das contas e das titularidades e para o preenchimento do saldo. A reconciliação passou a usar os repositórios de leitura. Foram removidos `IMovementStore`, `MovementStore`, `IBalanceQueryStore` e `BalanceQueryStore`.
+
+Desvio em relação ao plano: a regra de acesso à conta ficou na camada de aplicação (`AccountAccessPolicy`), apoiada nas entidades, e não no domínio, porque ela lança as exceções de regra de negócio, que pertencem à aplicação.
+
+Diferenças internas, sem efeito no resultado: a consulta de saldo passou de uma instrução SQL com junções para três leituras na mesma transação de leitura; e a atualização do saldo passou a gravar o saldo e a versão calculados pela entidade, dentro da transação imediata. As pastas `Domain/Language` e as subpastas `Requests` e `Responses` de `CommandStore` e `QueryStore` continuam declaradas e vazias, como vieram.
+
+#### Testes
+
+Os testes unitários dos dois handlers foram reescritos para substituir a unidade de trabalho e os repositórios com NSubstitute, verificando a ordem das operações, a confirmação da transação e a ausência de escrita nos caminhos de rejeição. Foram acrescentados testes das entidades. Os testes com SQLite real que exercitavam os antigos stores foram mantidos, caso a caso, exercitando os handlers com a unidade de trabalho real; os arquivos foram renomeados para `MovementPersistenceTests` e `BalancePersistenceTests`. Os testes HTTP de timeout, concorrência e erro interno do saldo passaram a substituir o handler em vez do store. A suíte passou de 294 para 340 testes.
+
+Nenhuma expectativa de comportamento foi alterada: os testes de atomicidade, rollback, repetição concorrente, movimentações simultâneas sem perda de saldo, migração e reconciliação passaram como estavam. A única mudança de expectativa foi de representação, de `'C'` para `TipoMovimento.Credito`, no teste do normalizador.
+
+#### Verificação
+
+A suíte foi executada 20 vezes seguidas sem falha. O ambiente Docker Compose foi reconstruído e reproduziu os resultados anteriores: saldo inicial `0.00`, crédito, repetição idêntica com o mesmo `idMovimento`, conflito de chave com 409, débito, saldo final `100.25`, 401 sem token e com cliente não mapeado, conta de outro correntista e conta inexistente com a mesma resposta, conta própria inativa, saldo preservado após reinício da API e reconciliação sem divergência. O ambiente foi removido com seus volumes.
+
+`ESPECIFICACAO_MOVIMENTACAO.md` (seção 7), `ESPECIFICACAO_SALDO.md` (seção 8), `README.md` (arquitetura, estrutura do repositório, tabelas de decisões e um novo passo na história) e `TODO.md` (TODO-007) foram atualizados.
+
+O gate completo foi executado ao final e passou: restore bloqueado, auditoria direta e transitiva sem vulnerabilidades conhecidas, secret scanning sem achados, formatação e analisadores aprovados, build Release com zero avisos e zero erros, 340 testes aprovados e cobertura com nova execução em 340/340. A fixture `Questao5/database.sqlite` manteve o SHA-256 `E355A3EDB7D73E7784A7467513248D530C27CC989C624A35D13A188B2AA8DD3C`. A refatoração foi encerrada em commit isolado.
+
+Permanecem pendentes de decisão do usuário: a forma de entrega (TODO-006) e o encerramento formal dos itens de segurança que dependem de infraestrutura.
+
+---

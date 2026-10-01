@@ -4,8 +4,8 @@ using Questao5.Application.Exceptions;
 using Questao5.Application.Handlers;
 using Questao5.Application.Movements;
 using Questao5.Application.Balances;
-using Questao5.Infrastructure.Database.CommandStore;
-using Questao5.Infrastructure.Database.QueryStore;
+using Questao5.Infrastructure.Database;
+using Questao5.Infrastructure.Services.Balances;
 using Questao5.Infrastructure.Services.Security;
 using Questao5.Infrastructure.Sqlite;
 using Questao5.Tests.Infrastructure.Sqlite;
@@ -13,7 +13,7 @@ using System.Collections.Concurrent;
 
 namespace Questao5.Tests.Infrastructure.Database;
 
-public sealed class MovementStoreTests
+public sealed class MovementPersistenceTests
 {
     private const string ActiveAccountId = "FA99D033-7067-ED11-96C6-7C5DFA4A16C9";
     private const string InactiveAccountId = "F475F943-7067-ED11-A06B-7E5DFA4A16C9";
@@ -527,11 +527,10 @@ public sealed class MovementStoreTests
 
         public CreateMovementCommandHandler CreateHandler(params string[] movementIds)
         {
-            var store = new MovementStore(
-                ConnectionFactory,
+            return new CreateMovementCommandHandler(
+                new UnitOfWorkFactory(ConnectionFactory),
                 new QueueMovementIdGenerator(movementIds),
                 new FixedTimeProvider(FixedUtcNow));
-            return new CreateMovementCommandHandler(store);
         }
 
         public int CountRows(string tableName)
@@ -550,7 +549,7 @@ public sealed class MovementStoreTests
 
         public BalanceReconciliationResult Reconcile()
         {
-            return new BalanceReconciler(ConnectionFactory).Reconcile();
+            return new BalanceReconciler(new UnitOfWorkFactory(ConnectionFactory)).Reconcile();
         }
 
         public void Execute(string sql, object? parameters = null)
