@@ -4,12 +4,14 @@
 
 Este documento consolida a Entrega D, realizada em 1º de outubro de 2026, e define o contrato e o desenho técnico da futura consulta de saldo. A entrega é exclusivamente de planejamento: nenhum endpoint, query, handler, store, configuração operacional ou teste executável de saldo foi implementado.
 
-Uma revisão documental posterior, também sem implementação funcional, substituiu o cálculo do saldo em tempo real pela **projeção persistida de saldo**. O saldo deixa de ser recalculado a partir de todo o histórico a cada consulta e passa a ser mantido em uma tabela consolidada, atualizada na mesma transação da movimentação. Um cache em memória foi avaliado e **descartado explicitamente** nesta etapa. O cenário foi reconfirmado como centrado em conta, sem identidade de titular.
+Uma revisão documental posterior, também sem implementação funcional, substituiu o cálculo do saldo em tempo real pela **projeção persistida de saldo**. O saldo deixa de ser recalculado a partir de todo o histórico a cada consulta e passa a ser mantido em uma tabela consolidada, atualizada na mesma transação da movimentação. Um cache em memória foi avaliado e **descartado explicitamente** nesta etapa. O cenário foi reconfirmado, naquele momento, como centrado em conta, sem identidade de titular.
+
+Uma segunda revisão documental, a Entrega F0, também de 1º de outubro de 2026, revogou a exceção de autenticação: a consulta passa a exigir JWT e a conta só pode ser consultada por seu titular. As regras de identidade, titularidade e token estão em `ESPECIFICACAO_AUTENTICACAO.md`; este documento registra apenas seus efeitos sobre a consulta de saldo.
 
 Fazem parte desta especificação:
 
 - requisitos funcionais do enunciado;
-- confirmação de que o cenário é centrado em conta, sem identidade de titular;
+- efeitos da autenticação e da titularidade sobre a consulta;
 - contrato HTTP versionado e DTO de resposta;
 - validações de entrada e regras de negócio;
 - modelo de leitura baseado em projeção persistida de saldo;
@@ -27,7 +29,7 @@ Permanecem fora do escopo desta entrega:
 - implementação da consulta de saldo;
 - alteração do endpoint de movimentação;
 - cadastro ou manutenção de contas;
-- autenticação, autorização e identidade baseada em titular, dispensadas somente para este exercício;
+- emissão de tokens, login e cadastro de correntistas, conforme `ESPECIFICACAO_AUTENTICACAO.md`;
 - migração de `movimento.valor` de `REAL` para centavos inteiros;
 - correção do tipo histórico de `movimento.idcontacorrente`;
 - cache em memória, cache distribuído ou qualquer acelerador de leitura descartável;
@@ -50,16 +52,19 @@ O enunciado exige que o serviço:
 
 As contas já são fornecidas pelo bootstrap. Não será criado serviço de cadastro.
 
-### 2.1 Escopo centrado em conta
+### 2.1 Conta, titular e identidade
 
-O cenário é centrado na **conta corrente** e não na pessoa. A tabela `contacorrente` possui apenas `idcontacorrente`, `numero`, `nome` e `ativo`, sem tabela de pessoas, coluna de proprietário ou chave estrangeira para um cliente. Não existe autenticação nem identidade de titular.
+O schema recebido é centrado na **conta corrente**: a tabela `contacorrente` possui apenas `idcontacorrente`, `numero`, `nome` e `ativo`, sem tabela de pessoas, coluna de proprietário ou chave estrangeira para um cliente.
 
-Consequências registradas:
+A Entrega F0 acrescentou a identidade do correntista sem alterar essa tabela:
 
-- `nomeTitular` é o conteúdo descritivo de `contacorrente.nome` e não identifica quem consulta;
-- a conta é a unidade de isolamento, de cálculo e de projeção;
-- não há autorização por titular; o risco correspondente é aceito apenas no exercício anônimo;
-- a ausência de identidade não altera o desenho da projeção de saldo, que permanece indexada por conta.
+- o correntista é identificado por um UUID recebido na claim `sub` do JWT;
+- o vínculo entre conta e correntista é persistido na tabela `titularidade_conta`;
+- `nomeTitular` continua sendo o conteúdo de `contacorrente.nome`;
+- a conta permanece a unidade de cálculo e de projeção; `saldo_conta` continua indexada por conta;
+- somente o titular consulta o saldo da conta.
+
+Antes dessa entrega, o cenário havia sido registrado como sem identidade de titular, com o risco de autorização aceito para o exercício anônimo. Esse registro está superado.
 
 ## 3. Contrato HTTP
 
@@ -67,10 +72,12 @@ Consequências registradas:
 
 ```http
 GET /api/v1/contas/{idContaCorrente}/saldo
+Authorization: Bearer <JWT>
 ```
 
 Decisões:
 
+- a requisição exige JWT válido; o correntista é identificado somente pela claim `sub`;
 - `GET` representa uma consulta sem efeito colateral intencional;
 - a versão permanece explícita na URL;
 - a identificação da conta é um parâmetro de rota, sem body;
@@ -115,9 +122,9 @@ X-Correlation-ID: 2dfe616b5f034b169b3e81745e189f68
 
 O modelo de aplicação deve manter `saldoAtual` como `decimal`. O JSON deve usar número, não texto. O exemplo `0.00` expressa a escala monetária, mas consumidores não podem depender da preservação lexical de zeros finais em um número JSON.
 
-`nomeTitular` é um atributo descritivo da conta; o projeto não possui identidade de titular autenticada nem vínculo de propriedade entre pessoa e conta.
+`nomeTitular` é o nome persistido em `contacorrente.nome`. A identidade de quem consulta vem do token e é conferida contra `titularidade_conta`; o nome não participa da autorização.
 
-`dataHoraConsulta` representa o instante em que a leitura consistente foi concluída. O valor será obtido de `TimeProvider.GetUtcNow()` somente depois de conta e movimentos terem sido lidos e validados, e será formatado explicitamente com `ToString("O", CultureInfo.InvariantCulture)`.
+`dataHoraConsulta` representa o instante em que a leitura consistente foi concluída. O valor será obtido de `TimeProvider.GetUtcNow()` somente depois de conta, titularidade e saldo consolidado terem sido lidos e validados, e será formatado explicitamente com `ToString("O", CultureInfo.InvariantCulture)`.
 
 ### 3.4 Erros
 
@@ -125,15 +132,17 @@ Erros usam `application/problem+json`, o tratamento global existente e a extens�
 
 | Situação | HTTP | `code` | Observação |
 | --- | --- | --- | --- |
+| token ausente ou inválido | 401 | `UNAUTHENTICATED` | header `WWW-Authenticate: Bearer`; motivo específico não devolvido |
 | segmento de conta ausente | 404 | não aplicável | a rota não corresponde |
 | parâmetro vazio após normalização ou acima do limite | 400 | validação por campo | erro estrutural, sem consulta ao banco |
 | conta não cadastrada | 400 | `INVALID_ACCOUNT` | exigido pelo enunciado |
-| conta inativa | 400 | `INACTIVE_ACCOUNT` | exigido pelo enunciado |
+| conta de outro correntista ou sem titularidade | 400 | `INVALID_ACCOUNT` | corpo idêntico ao de conta não cadastrada |
+| conta própria inativa | 400 | `INACTIVE_ACCOUNT` | exigido pelo enunciado |
 | frequência ou concorrência excedida | 429 | `RATE_LIMIT_EXCEEDED` | Problem Details correlacionado |
 | timeout do servidor | 504 | `REQUEST_TIMEOUT` | Problem Details correlacionado |
 | dado monetário persistido incompatível ou falha inesperada | 500 | não exposto | mensagem genérica; diagnóstico somente em log seguro |
 
-As mensagens de `INVALID_ACCOUNT` e `INACTIVE_ACCOUNT` seguirão o contrato já usado pela movimentação. A distinção exigida pelo enunciado permite enumeração do estado da conta; esse risco é aceito somente no exercício anônimo e deverá ser reavaliado com autenticação antes de uso real.
+As mensagens de `INVALID_ACCOUNT` e `INACTIVE_ACCOUNT` seguirão o contrato já usado pela movimentação. A ordem das validações é: token, existência da conta, titularidade e, por último, situação ativa. Assim, `INACTIVE_ACCOUNT` só é devolvido ao próprio titular, e um correntista autenticado não consegue distinguir conta alheia de conta inexistente.
 
 ## 4. Modelo de leitura: projeção persistida de saldo
 
@@ -185,7 +194,7 @@ A movimentação confirmada atualizará a projeção na mesma transação imedia
 1. abrir conexão e transação imediata (`BeginTransaction(deferred: false)`);
 2. consultar a idempotência pela chave normalizada;
 3. em replay válido, **não** inserir movimento e **não** atualizar o saldo, retornando o resultado original;
-4. validar existência e atividade da conta;
+4. validar existência, titularidade e atividade da conta;
 5. inserir o movimento;
 6. atualizar `saldo_conta`, somando ou subtraindo o valor e incrementando `versao`;
 7. registrar o resultado idempotente;
@@ -206,8 +215,8 @@ A idempotência é verificada antes de qualquer escrita, impedindo que a repeti�
 
 Como já podem existir movimentos antes da criação da projeção, a migração deverá:
 
-1. criar a tabela `saldo_conta` de forma idempotente;
-2. criar uma linha para cada conta existente;
+1. criar as tabelas `saldo_conta` e `titularidade_conta` de forma idempotente, na mesma migração para `user_version = 2`;
+2. criar uma linha de saldo para cada conta existente;
 3. reconstruir o saldo a partir dos movimentos, convertendo cada `REAL` individualmente e acumulando em `decimal` verificado;
 4. converter o resultado validado para centavos;
 5. gravar saldo e versão;
@@ -237,13 +246,13 @@ A decisão poderá ser revista após medição, caso a consulta sobre `saldo_con
 
 ## 5. Consistência e concorrência
 
-A consulta lerá a conta e o saldo consolidado na mesma conexão e transação de leitura, garantindo que número, titular e saldo pertençam ao mesmo instante, mesmo durante gravações concorrentes.
+A consulta lerá a conta, a titularidade e o saldo consolidado na mesma conexão e transação de leitura, garantindo que número, titular e saldo pertençam ao mesmo instante, mesmo durante gravações concorrentes.
 
 O fluxo planejado é:
 
-1. validar e normalizar o identificador recebido;
+1. validar e normalizar o identificador recebido e obter o correntista do token já validado;
 2. abrir conexão e transação de leitura;
-3. ler e validar a conta;
+3. ler a conta e validar existência, titularidade e situação ativa, nessa ordem;
 4. ler `saldo_conta` pelo identificador persistido da conta;
 5. converter centavos para `decimal` e normalizar a escala;
 6. concluir a leitura;
@@ -259,13 +268,13 @@ A consulta terá configuração própria, sem reutilizar semanticamente `Movemen
 | Controle | Valor inicial planejado |
 | --- | --- |
 | timeout | 5 segundos |
-| frequência específica | 30 requisições por minuto por IP |
+| frequência específica | 30 requisições por minuto por correntista autenticado |
 | concorrência específica | 8 consultas em execução no processo, sem fila |
 | limite global existente | 120 requisições por minuto por IP |
 
 Não há body cujo tamanho precise ser configurado. O identificador é limitado pelo contrato e pelos limites gerais do servidor para URL e headers.
 
-O IP continua sendo apenas controle compensatório do exercício anônimo. Limites por identidade e por conta dependem de autenticação futura. Tentativas inválidas também consomem os limites, reduzindo enumeração irrestrita.
+O limite global por IP é aplicado antes da autenticação. O limite específico é contado por correntista; requisições sem identidade válida são contadas por IP. Tentativas inválidas, inclusive as rejeitadas com 401, também consomem os limites, reduzindo enumeração irrestrita.
 
 ## 7. Logs estruturados
 
@@ -279,6 +288,8 @@ Eventos planejados para o componente `Balance`:
 | 5203 | Warning | limite excedido | `CorrelationId`, `LimitName`, `Outcome` |
 
 `AccountFingerprint` será formado pelos primeiros 16 caracteres hexadecimais do SHA-256 do identificador normalizado. Ele permite correlacionar tentativas sem registrar o identificador em claro e não substitui autenticação.
+
+A negativa por titularidade responde ao cliente como `INVALID_ACCOUNT`, mas é registrada pelo evento 5301 do componente `Security`, definido em `ESPECIFICACAO_AUTENTICACAO.md`, para que o motivo real fique disponível à investigação. Token e identificador do correntista nunca são registrados em claro.
 
 Não serão registrados:
 
@@ -307,11 +318,11 @@ BalanceController
 
 Responsabilidades:
 
-- `BalanceController`: rota, validação estrutural, status HTTP, headers de cache e envio ao Mediator;
-- `GetBalanceQuery`: identificador normalizado da conta;
+- `BalanceController`: rota, exigência de autenticação, validação estrutural, status HTTP, headers de cache e envio ao Mediator;
+- `GetBalanceQuery`: identificador normalizado da conta e identificador do correntista obtido do token;
 - `GetBalanceQueryHandler`: orquestração da consulta, sem SQL ou regra de serialização;
-- `IBalanceQueryStore`: contrato de leitura da conta e do saldo consolidado;
-- `BalanceQueryStore`: snapshot SQLite, SQL parametrizado, validação de conta e conversão de centavos para `decimal`;
+- `IBalanceQueryStore`: contrato de leitura da conta, da titularidade e do saldo consolidado;
+- `BalanceQueryStore`: snapshot SQLite, SQL parametrizado, validação de conta e titularidade e conversão de centavos para `decimal`;
 - `GetBalanceResponse`: resposta interna com número, titular, instante UTC e saldo;
 - `GetBalanceHttpResponse`: contrato público fechado;
 - `BalanceLogger`: Event IDs 5200–5203 e fingerprint seguro;
@@ -320,7 +331,7 @@ Responsabilidades:
 
 No lado de escrita, `IMovementStore`/`MovementStore` passam a manter a projeção: dentro da transação imediata existente, após inserir o movimento e antes de confirmar, atualizam `saldo_conta` com o valor em centavos e o incremento de `versao`. A idempotência continua sendo verificada antes de qualquer escrita.
 
-O schema evolui por migração versionada, elevando `PRAGMA user_version` e criando `saldo_conta` de forma idempotente, com preenchimento inicial transacional. Nenhuma alteração será feita na fixture versionada.
+O schema evolui por migração versionada, elevando `PRAGMA user_version` para `2` e criando `saldo_conta` e `titularidade_conta` de forma idempotente, com preenchimento inicial transacional. Nenhuma alteração será feita na fixture versionada.
 
 Pastas e namespaces devem seguir a separação atual entre `Application`, `Infrastructure/Database/CommandStore`, `Infrastructure/Database/QueryStore` e `Infrastructure/Services`.
 
@@ -336,10 +347,18 @@ Pastas e namespaces devem seguir a separação atual entre `Application`, `Infra
 - Swagger passa a inventariar somente `POST /api/v1/movimentos` e `GET /api/v1/contas/{idContaCorrente}/saldo`;
 - o DTO não expõe identificador interno, situação da conta ou movimentos.
 
+### Autenticação e titularidade
+
+- requisição sem token ou com token inválido retorna 401 `UNAUTHENTICATED`;
+- titular consulta a própria conta;
+- conta de outro correntista ou sem titularidade retorna `INVALID_ACCOUNT`, com corpo idêntico ao de conta não cadastrada;
+- conta alheia inativa retorna `INVALID_ACCOUNT`, não `INACTIVE_ACCOUNT`;
+- a negativa por titularidade emite o evento 5301 sem conta ou correntista em claro.
+
 ### Regras de negócio
 
 - conta inexistente retorna `INVALID_ACCOUNT`;
-- conta inativa retorna `INACTIVE_ACCOUNT`;
+- conta própria inativa retorna `INACTIVE_ACCOUNT`;
 - comparação do identificador preserva o comportamento sem diferenciação de caixa;
 - erros usam Problem Details e correlation ID;
 - nenhuma falha retorna nome, saldo, SQL ou detalhe interno.
@@ -394,15 +413,15 @@ Pastas e namespaces devem seguir a separação atual entre `Application`, `Infra
 
 ## 10. Riscos residuais e decisões explícitas
 
-1. **Autenticação e autorização ausentes:** risco aceito somente para o exercício; qualquer conhecedor de um identificador pode consultar dados bancários.
-2. **Enumeração de contas:** `INVALID_ACCOUNT` e `INACTIVE_ACCOUNT` distintos são exigidos pelo enunciado; rate limiting, mensagens controladas e ausência de dados adicionais são compensatórios incompletos.
+1. **Emissor de teste:** a consulta exige JWT e titularidade, mas o emissor usado no desafio não autentica pessoas; risco aceito somente para o exercício, conforme `ESPECIFICACAO_AUTENTICACAO.md`.
+2. **Enumeração de contas:** `INVALID_ACCOUNT` e `INACTIVE_ACCOUNT` distintos são exigidos pelo enunciado. Com a titularidade, `INACTIVE_ACCOUNT` só chega ao próprio titular e conta alheia é indistinguível de conta inexistente; resta o canal de tempo de resposta, sem garantia de tempo constante.
 3. **`REAL` legado:** a soma em `decimal` reduz propagação de ponto flutuante, mas não recupera precisão já perdida no armazenamento. A solução definitiva é migração separada para centavos inteiros.
 4. **Tipo divergente da chave estrangeira:** SQLite permite o relacionamento histórico, mas SEC-007 continua bloqueado para migração própria.
 5. **Consistência local:** a transação fornece snapshot no SQLite local; topologias distribuídas ou réplicas não fazem parte do projeto.
-6. **Limites por IP:** NAT, proxies e endereços compartilhados reduzem precisão do controle; identidade autenticada é necessária em ambiente real.
-7. **Dados pessoais na resposta:** nome e número são exigidos; `no-store`, TLS no ambiente e autorização futura são necessários para reduzir exposição.
+6. **Limite global por IP:** NAT, proxies e endereços compartilhados reduzem a precisão do limite global; o limite específico passa a ser contado por correntista.
+7. **Dados pessoais na resposta:** nome e número são exigidos e só chegam ao titular; `no-store` e TLS no ambiente continuam necessários para reduzir exposição.
 8. **Divergência da projeção:** se houver escrita direta em `movimento` fora da aplicação, o saldo consolidado não será atualizado. Toda movimentação deve passar pelo store autorizado, e a reconciliação cobre diagnóstico e correção.
-9. **Ausência de identidade de titular:** o cenário é centrado na conta e não conhece dono; existe apenas nome descritivo. Risco aceito somente no exercício anônimo.
+9. **Titularidades fabricadas:** os identificadores de correntista não existem nos dados do proponente; são dados de demonstração gravados pelo seed deste projeto.
 10. **Sem cache e sem alta disponibilidade:** a projeção melhora desempenho e previsibilidade de latência, mas aplicação e SQLite continuam sendo pontos únicos de falha. Esta entrega não fornece alta disponibilidade.
 
 ## 11. Critérios para a futura implementação
@@ -411,9 +430,9 @@ A implementação somente poderá começar após autorização expressa e dever�
 
 1. confirmar branch e workspace limpos;
 2. preservar a fixture `Questao5/database.sqlite` e o SHA-256 esperado;
-3. implementar a migração versionada e a tabela `saldo_conta`, com preenchimento inicial e reconciliação;
-4. atualizar a escrita para manter a projeção na mesma transação, sem duplicar valor em replay idempotente;
-5. implementar o núcleo de consulta (`IBalanceQueryStore`) e os testes monetários;
+3. concluir antes as entregas F1 (autenticação) e F2 (schema versão 2, titularidade e projeção), definidas em `ESPECIFICACAO_AUTENTICACAO.md`;
+4. na F2, implementar a migração versionada com `saldo_conta` e `titularidade_conta`, o preenchimento inicial, a reconciliação e a manutenção da projeção na mesma transação da escrita, sem duplicar valor em replay idempotente;
+5. implementar o núcleo de consulta (`IBalanceQueryStore`), com verificação de titularidade, e os testes monetários;
 6. implementar endpoint, contrato HTTP, `Cache-Control: no-store` e inventário OpenAPI em etapa própria;
 7. implementar limites operacionais e logs 5200–5203 em etapa própria;
 8. não introduzir cache em memória, mensageria ou consistência eventual nesta entrega;

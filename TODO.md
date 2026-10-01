@@ -10,6 +10,7 @@ Os documentos do projeto possuem responsabilidades distintas e não constituem b
 - `CONVERSAS.md`: evidência cronológica das solicitações, decisões e ações, sem substituir o estado consolidado deste TODO;
 - `ESPECIFICACAO_MOVIMENTACAO.md`: contrato técnico especializado da movimentação; divergências de estado devem ser reconciliadas neste TODO;
 - `ESPECIFICACAO_SALDO.md`: contrato técnico planejado da consulta de saldo; não autoriza implementação sem entrega específica;
+- `ESPECIFICACAO_AUTENTICACAO.md`: contrato técnico planejado da autenticação JWT e da titularidade de conta; não autoriza implementação sem entrega específica;
 - `DIRETRIZES_SEGURANCA.md`: guardrails permanentes aplicáveis a cada mudança, não um cronograma paralelo;
 - `RELATORIO_SEGURANCA.md`: fotografia histórica encerrada em 30 de setembro de 2026; estados antigos nele preservados não representam o andamento corrente;
 - `Questao5/Questão 5.docx`: enunciado original e fonte de requisitos, não documento de controle.
@@ -26,7 +27,13 @@ Pendências acionáveis descobertas em qualquer especificação, relatório, dir
 | C3 | Concluída | Implementar limites operacionais, logs e testes de abuso. |
 | C4 | Concluída | Limpeza do template, reconciliação documental, gate final e commit funcional consolidado. |
 | D | Concluída | Planejar a consulta de saldo, sem implementação antecipada. |
-| E | Bloqueada | Implementar a consulta de saldo somente após autorização específica. |
+| F0 | Concluída | Revisão documental: autenticação JWT, titularidade de conta e emissor do desafio. |
+| F1 | Autorizada — próxima | Autenticação JWT na API. |
+| F2 | Autorizada — após F1 | Schema versão 2, titularidade, projeção de saldo e autorização na movimentação. |
+| E | Autorizada — após F2 | Implementar a consulta de saldo (E2 a E4), já com autorização por titular. |
+| G | Autorizada — após E | Empacotamento com Dockerfile e Docker Compose, incluindo o emissor de teste. |
+
+A sequência F0, F1, F2, E e G foi autorizada pelo usuário em 1º de outubro de 2026 (Interação 033 de `CONVERSAS.md`). Cada entrega termina com o gate completo e um commit isolado.
 
 ### Entrega C4 — limpeza, documentação, gate e commit funcional
 
@@ -66,13 +73,121 @@ Pendências acionáveis descobertas em qualquer especificação, relatório, dir
 - [x] Confirmar que o cenário é centrado em conta e não possui dono/identidade de titular.
 - [x] Registrar a especificação antes de qualquer implementação.
 
+### Entrega F0 — revisão documental de autenticação e titularidade
+
+- **Estado:** Concluída em 1º de outubro de 2026 — especificação registrada em `ESPECIFICACAO_AUTENTICACAO.md`
+- **Motivo:** o vínculo entre conta e titular era apenas o texto `contacorrente.nome`; o usuário decidiu acrescentar o identificador do correntista, recebido por JWT, e a autenticação necessária para isso
+- **Limite:** entrega exclusivamente documental; nenhum código, pacote, schema, fixture ou configuração foi alterado
+
+#### Decisões registradas
+
+- [x] A API apenas valida tokens de um emissor externo configurável; não emite tokens.
+- [x] O correntista é um UUID recebido na claim `sub`; o nome continua em `contacorrente.nome`.
+- [x] O vínculo é persistido na tabela aditiva `titularidade_conta`, criada na migração para `user_version = 2`.
+- [x] A titularidade é exigida na movimentação e na consulta de saldo.
+- [x] Conta de outro correntista responde `400 INVALID_ACCOUNT`, idêntico a conta não cadastrada; o motivo real fica apenas em log.
+- [x] A idempotência passa à representação `v2`, amarrada ao correntista.
+- [x] O emissor do ambiente do desafio é o `mock-oauth2-server`, em Docker Compose; o Keycloak foi avaliado e descartado.
+- [x] A exceção de autenticação de `DIRETRIZES_SEGURANCA.md` foi revogada; SEC-001 e SEC-002 foram reabertos.
+
+### Entrega F1 — autenticação JWT na API
+
+- **Estado:** Autorizada — próxima entrega
+- **Especificação:** `ESPECIFICACAO_AUTENTICACAO.md`, seções 5, 6.3, 9 e 11
+- **Limite:** não alterar schema, regra de titularidade, idempotência ou consulta de saldo
+
+#### Critérios de aceite
+
+- [ ] Pacote `Microsoft.AspNetCore.Authentication.JwtBearer` avaliado, fixado, com lock file e auditoria sem vulnerabilidades.
+- [ ] Assinatura, algoritmo, emissor, audiência, validade e `sub` UUID são validados conforme a especificação.
+- [ ] Todos os endpoints bancários exigem autenticação por política padrão.
+- [ ] Token ausente ou inválido retorna 401 `UNAUTHENTICATED` correlacionado, com `WWW-Authenticate: Bearer` e sem motivo específico.
+- [ ] A aplicação não inicia sem a configuração obrigatória de `Jwt`.
+- [ ] O evento 5300 é emitido sem token, header `Authorization` ou identidade em claro.
+- [ ] O documento OpenAPI declara o esquema de segurança Bearer.
+- [ ] Os testes existentes passam a enviar token e existem testes negativos de autenticação com chave local, sem depender de contêiner.
+- [ ] Gate completo aprovado e fixture com o SHA-256 esperado.
+
+### Entrega F2 — schema versão 2, titularidade e projeção de saldo
+
+- **Estado:** Autorizada — depende de F1
+- **Especificação:** `ESPECIFICACAO_AUTENTICACAO.md`, seções 4, 6, 7, 8 e 9; `ESPECIFICACAO_SALDO.md`, seção 4; `ESPECIFICACAO_MOVIMENTACAO.md`, seção 10
+- **Observação:** absorve a etapa E1 (migração e projeção persistida), porque `titularidade_conta` e `saldo_conta` pertencem à mesma migração de schema
+- **Limite:** não criar endpoint, query ou handler de saldo
+
+#### Critérios de aceite
+
+- [ ] A migração cria `titularidade_conta` e `saldo_conta`, grava as seis titularidades, preenche e reconcilia o saldo e eleva `user_version` para `2`, de forma transacional, idempotente e segura para concorrência.
+- [ ] O validador de schema exige as duas tabelas novas; a fixture versionada permanece intacta.
+- [ ] A movimentação valida existência, titularidade e situação ativa, nessa ordem, dentro da transação.
+- [ ] Conta de outro correntista ou sem titularidade retorna `INVALID_ACCOUNT` idêntico ao de conta não cadastrada e não grava dados.
+- [ ] A movimentação confirmada atualiza `saldo_conta` e `versao` na mesma transação; replay não altera saldo.
+- [ ] A idempotência usa a representação `v2`; a mesma chave por outro correntista retorna 409.
+- [ ] O limite específico é contado por correntista; o limite global por IP permanece.
+- [ ] O evento 5301 é emitido sem conta ou correntista em claro.
+- [ ] Existe rotina de reconciliação que detecta divergência entre projeção e movimentos.
+- [ ] Gate completo aprovado e fixture com o SHA-256 esperado.
+
 ### Entrega E — implementação da consulta de saldo
 
-- **Estado:** Bloqueada — depende de autorização expressa após a revisão da Entrega D
+- **Estado:** Autorizada — depende de F2
 - **Especificação:** `ESPECIFICACAO_SALDO.md`
-- **Limite atual:** não criar endpoint, query, handler, query store, migração, configuração ou teste executável de saldo sem nova autorização
-- **Sequência proposta:** E1 migração e projeção persistida; E2 núcleo de consulta; E3 contrato HTTP; E4 limites, logs, inventário, gate e commit funcional
-- **Decisão arquitetural:** CQRS local com projeção persistida (`saldo_conta`), sem cache em memória, mensageria ou consistência eventual
+- **Sequência:** E1 foi absorvida pela F2; E2 núcleo de consulta; E3 contrato HTTP; E4 limites, logs, inventário, gate e commit funcional
+- **Decisão arquitetural:** CQRS local com projeção persistida (`saldo_conta`), sem cache em memória, mensageria ou consistência eventual; consulta restrita ao titular da conta
+
+### Entrega G — empacotamento com Docker Compose
+
+- **Estado:** Autorizada — depende de E
+- **Especificação:** `ESPECIFICACAO_AUTENTICACAO.md`, seção 10
+- **Limite:** ambiente do desafio; não constitui pipeline de CI/CD nem ambiente de produção
+
+#### Critérios de aceite
+
+- [ ] Dockerfile da API com imagens fixadas por versão ou digest e execução sem privilégios.
+- [ ] `docker-compose.yml` com a API e o emissor `mock-oauth2-server`, imagem fixada e algoritmo de assinatura confirmado.
+- [ ] O emissor escrito no token coincide com `Jwt:Issuer` para a API e para o avaliador.
+- [ ] `Jwt:RequireHttpsMetadata=false` fica restrito ao ambiente do Compose e documentado como exceção.
+- [ ] Instruções para os avaliadores: subir o ambiente, obter token de cada correntista e chamar os dois endpoints.
+- [ ] Reavaliar SEC-011, SEC-012, SEC-021 e SEC-022 à luz do ambiente criado, registrando o que passa a ser avaliável e o que continua fora do escopo.
+
+### Pendências identificadas em 1º de outubro de 2026 — sem autorização de execução
+
+Achados do levantamento de fechamento de escopo (Interação 029 de `CONVERSAS.md`). O usuário decidiu tratar primeiro a consulta de saldo; estes itens ficam registrados e aguardam decisão.
+
+#### TODO-003 — Devolver `INVALID_VALUE` e `INVALID_TYPE` na resposta HTTP
+
+- **Estado:** Pendente — aguarda decisão
+- **Prioridade:** Alta — requisito do enunciado
+- **Evidência:** valor não positivo e tipo diferente de `C`/`D` são barrados pela validação do DTO `CreateMovementRequest` e respondidos como erro de validação por campo, sem `code`. Os códigos existem em `MovementRequestNormalizer`, mas não são alcançáveis pelo endpoint. A seção 2.4 de `ESPECIFICACAO_MOVIMENTACAO.md` promete os dois códigos.
+
+- [ ] Valor não positivo retorna HTTP 400 com `code` `INVALID_VALUE`.
+- [ ] Tipo diferente de `C` ou `D` retorna HTTP 400 com `code` `INVALID_TYPE`.
+- [ ] Testes HTTP verificam os dois códigos.
+
+#### TODO-004 — Completar a documentação Swagger
+
+- **Estado:** Pendente — aguarda decisão
+- **Prioridade:** Média — ponto extra do enunciado
+- **Evidência:** `AddSwaggerGen()` sem configuração; não há descrição de atributos, exemplos nem os retornos 429, 500 e 504.
+
+- [ ] Atributos, requisições e todos os retornos possíveis documentados, com exemplos.
+
+#### TODO-005 — Testes unitários com NSubstitute
+
+- **Estado:** Pendente — aguarda decisão
+- **Prioridade:** Média — ponto extra do enunciado
+- **Evidência:** o pacote NSubstitute está referenciado em `Questao5.Tests`, mas nenhum teste o utiliza; os handlers não possuem teste unitário com store mockado.
+
+- [ ] Handlers cobertos por testes unitários com dependências mockadas.
+
+#### TODO-006 — README e forma de entrega
+
+- **Estado:** Pendente — aguarda decisão
+- **Prioridade:** Baixa
+- **Evidência:** não existe README com instruções de execução, e nenhum documento define como o trabalho é entregue (merge em `master`, tag ou pacote). As instruções de uso do ambiente Compose fazem parte da Entrega G.
+
+- [ ] Instruções de execução da API, dos testes e do gate.
+- [ ] Forma de entrega definida.
 
 ## Regra de priorização
 
@@ -242,34 +357,41 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-001 — Definir e implementar autenticação da API
 
-- **Estado:** Risco aceito exclusivamente para o escopo do exercício — não implementar
+- **Estado:** Em andamento — reaberto em 1º de outubro de 2026; planejado na Entrega F0, implementação na Entrega F1
 - **Prioridade:** Alta
 - **Referenciais:** OWASP API2 e API5; CWE-306 e CWE-862; NIST SSDF PW.4
 - **Evidência:** `Program.cs` usa autorização, mas não registra autenticação, não executa `UseAuthentication` e os endpoints atuais não exigem identidade.
-- **Decisão:** por solicitação expressa do usuário, a API permanecerá sem autenticação neste desafio. A decisão não representa conformidade e não pode ser reutilizada em produção.
+- **Decisão de 30 de setembro de 2026 (superada):** a API permaneceria sem autenticação neste desafio, como risco aceito.
+- **Decisão de 1º de outubro de 2026:** o usuário revogou a exceção. A API validará JWT de um emissor externo configurável, conforme `ESPECIFICACAO_AUTENTICACAO.md`. O emissor do ambiente do desafio é uma ferramenta de teste que não autentica pessoas; essa limitação é aceita somente para o exercício.
 
 #### Critérios de aceite
 
-- [x] A ausência de autenticação e o risco residual estão documentados.
-- [x] Está documentado que a decisão se limita ao exercício e é proibida para produção.
-- [ ] Aplicar controles compensatórios: rate limiting, limites de entrada, logs e correlação estão implementados na movimentação; TLS de produção e revisão final de enumeração dependem do ambiente e das próximas entregas.
-- [ ] Reabrir este item antes de qualquer implantação real.
+- [x] A decisão anterior de ausência de autenticação e seu risco residual foram documentados.
+- [x] A autenticação por JWT, a validação do token e a limitação do emissor de teste estão especificadas.
+- [ ] Todo endpoint bancário exige token válido; token ausente ou inválido retorna 401.
+- [ ] Assinatura, algoritmo, emissor, audiência, validade e sujeito são validados e cobertos por testes negativos.
+- [ ] Controles complementares: rate limiting, limites de entrada, logs e correlação estão implementados na movimentação; TLS de produção depende do ambiente.
+- [ ] Substituir o emissor de teste e reavaliar este item antes de qualquer implantação real.
 
 ### SEC-002 — Implementar autorização em nível de conta e função
 
-- **Estado:** Risco aceito exclusivamente para o escopo do exercício — autorização por titular não implementável sem identidade
+- **Estado:** Em andamento — reaberto em 1º de outubro de 2026; planejado na Entrega F0, implementação nas Entregas F2 (movimentação) e E (saldo)
 - **Prioridade:** Alta
 - **Referenciais:** OWASP API1, API3 e API5; CWE-284, CWE-639, CWE-862 e CWE-863
 - **Evidência:** não existe vínculo entre identidade, conta corrente e permissão para consultar saldo ou realizar movimentação.
-- **Decisão:** serão mantidas validações de existência, estado e propriedades mínimas, mas elas não serão tratadas como autorização.
+- **Decisão de 30 de setembro de 2026 (superada):** seriam mantidas apenas validações de existência e estado, sem autorização por titular.
+- **Decisão de 1º de outubro de 2026:** a conta só poderá ser movimentada ou consultada pelo correntista registrado em `titularidade_conta`, identificado pela claim `sub`. Autorização por função ou papel continua fora do escopo.
 
 #### Critérios de aceite
 
-- [x] A impossibilidade de autorização por titular sem identidade está documentada.
 - [x] Está documentado que conta existente/ativa não equivale a conta autorizada.
 - [x] O DTO da movimentação expõe apenas propriedades necessárias e impede overposting.
-- [ ] Respostas devem reduzir enumeração e exposição desnecessária.
-- [ ] Reabrir este item antes de qualquer implantação real.
+- [x] O vínculo conta–correntista e a regra de titularidade estão especificados.
+- [ ] A movimentação só é aceita para conta do correntista autenticado.
+- [ ] A consulta de saldo só é aceita para conta do correntista autenticado.
+- [ ] Conta de outro correntista é indistinguível de conta não cadastrada na resposta, reduzindo enumeração.
+- [ ] A idempotência não permite que um correntista recupere o resultado de outro.
+- [ ] Reavaliar este item antes de qualquer implantação real.
 
 ### SEC-003 — Corrigir a validação parcial do bootstrap
 
@@ -339,7 +461,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-007 — Uniformizar o tipo da chave estrangeira de conta
 
-- **Estado:** Bloqueado — exige reconstrução/migração do esquema vinculada a SEC-003 e SEC-004
+- **Estado:** Bloqueado — exige reconstrução da tabela `movimento` em migração própria, ainda não autorizada; SEC-003 e SEC-004, que a antecediam, estão concluídos
 - **Prioridade:** Média
 - **Referenciais:** CWE-20 e CWE-704; NIST SSDF PW.5
 - **Evidência:** `contacorrente.idcontacorrente` é `TEXT(37)`, enquanto `movimento.idcontacorrente` está declarado como `INTEGER(10)`.
@@ -359,6 +481,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - **Evidência de origem:** não havia rate limiting, limites específicos de corpo, frequência, concorrência ou crescimento do fluxo de movimentação/idempotência.
 - **Decisão da Entrega B:** corpo de 4 KiB, timeout de 5 segundos, 30 requisições por minuto por IP no endpoint, limite global de 120 por minuto por IP, até 8 operações concorrentes sem fila e HTTP 429 para excesso. O uso de IP é controle compensatório restrito ao exercício anônimo.
 - **Evidência C3:** os controles foram implementados com middleware nativo do ASP.NET Core, configuração externalizável, filas desabilitadas, Problem Details correlacionado, `Retry-After` para janelas fixas e testes de frequência, concorrência e timeout. Limites por identidade, conta ou chave dependem de autenticação futura e não são alegados como atendidos.
+- **Decisão da Entrega F0:** com a autenticação, o limite específico passará a ser contado por correntista na Entrega F2; o limite global por IP permanece e é aplicado antes da autenticação.
 
 #### Critérios de aceite
 
@@ -627,7 +750,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - [x] O valor efetivo de `PRAGMA foreign_keys` foi confirmado em teste, incluindo rejeição de registro órfão.
 - [ ] Migrar `MediatR.Extensions.Microsoft.DependencyInjection` 11.1.0, pacote legado preexistente, em mudança separada e com testes de regressão do bootstrap.
 - [ ] Avaliar CIS somente quando a infraestrutura e o deploy forem definidos.
-- [ ] Reavaliar OWASP API1, API2, API3, API5 e API6 antes de qualquer implantação real; SEC-001 e SEC-002 são riscos aceitos apenas para este exercício.
+- [ ] Reavaliar OWASP API1, API2, API3, API5 e API6 antes de qualquer implantação real; SEC-001 e SEC-002 foram reabertos em 1º de outubro de 2026, e o emissor de teste é limitação aceita apenas para este exercício.
 
 ---
 
@@ -640,9 +763,9 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 5. Interromper a execução e aguardar os detalhes adicionais do usuário.
 6. Somente após uma nova autorização expressa, elaborar um plano específico para as pendências funcionais.
 
-Este procedimento foi cumprido. TODO-001 recebeu autorização própria e foi concluído em 1º de outubro de 2026. TODO-002 foi planejado na Entrega B, implementado nas entregas C1 a C3 e concluído em 1º de outubro de 2026. C4 foi concluída e a Entrega D formalizou o planejamento da consulta de saldo. A Entrega E permanece bloqueada e depende de autorização expressa para qualquer implementação.
+Este procedimento foi cumprido. TODO-001 recebeu autorização própria e foi concluído em 1º de outubro de 2026. TODO-002 foi planejado na Entrega B, implementado nas entregas C1 a C3 e concluído em 1º de outubro de 2026. C4 foi concluída e a Entrega D formalizou o planejamento da consulta de saldo. Em 1º de outubro de 2026 o usuário autorizou a sequência F0, F1, F2, E e G descrita no roadmap.
 
-Não existe, neste documento, autorização antecipada para implementar outras pendências funcionais.
+Não existe, neste documento, autorização antecipada para implementar outras pendências funcionais; TODO-003 a TODO-006 aguardam decisão.
 
 ## Guardrails permanentes de segurança
 
@@ -677,3 +800,4 @@ Estes itens são controles contínuos e não devem ser marcados globalmente como
 - **1º de outubro de 2026:** Entrega C4 removeu o endpoint e o modelo `WeatherForecast`, eliminou comentários residuais do template e adicionou regressão do inventário OpenAPI. A especificação foi reconciliada com o estado implementado. O gate completo passou com 80 testes, zero avisos, zero erros, sem vulnerabilidades conhecidas ou segredos detectados; a fixture manteve o SHA-256 esperado. SEC-018 foi concluído e D tornou-se a próxima entrega planejável.
 - **1º de outubro de 2026:** Entrega D consolidou em `ESPECIFICACAO_SALDO.md` os requisitos, contrato HTTP, cálculo monetário, tempo UTC, snapshot de leitura, limites, logs, arquitetura, testes e riscos residuais da consulta de saldo. O gate passou com 80 testes, zero avisos, zero erros, sem vulnerabilidades conhecidas ou segredos detectados; a fixture manteve o SHA-256 esperado. Nenhum código funcional foi implementado; a Entrega E permanece bloqueada até autorização específica.
 - **1º de outubro de 2026:** revisão documental da Entrega D substituiu o cálculo em tempo real pela projeção persistida de saldo (`saldo_conta`), com centavos inteiros, atualização transacional com movimento e idempotência, preenchimento inicial e reconciliação. O cache em memória foi avaliado e descartado nesta etapa, e o cenário foi reconfirmado como centrado em conta, sem identidade de titular. Nenhum código funcional, schema, fixture ou dado operacional foi alterado; a Entrega E permanece bloqueada.
+- **1º de outubro de 2026:** levantamento de fechamento de escopo registrou TODO-003 a TODO-006, ainda sem autorização de execução. A Entrega F0 revogou a exceção de autenticação, reabriu SEC-001 e SEC-002 e consolidou em `ESPECIFICACAO_AUTENTICACAO.md` a autenticação JWT, o identificador do correntista, a tabela `titularidade_conta`, a regra de titularidade para movimentação e saldo, a idempotência `v2` e o emissor `mock-oauth2-server` em Docker Compose. As especificações de movimentação e saldo e as diretrizes foram atualizadas; a tabela de erros da movimentação passou a listar 413, 415 e 504, e o estado de SEC-007 foi corrigido. O usuário autorizou a sequência F0, F1, F2, E e G; a etapa E1 foi absorvida pela F2. Nenhum código, schema, fixture ou dado operacional foi alterado na F0.

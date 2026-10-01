@@ -13,15 +13,19 @@ As referências abaixo serão usadas como guias de engenharia e critérios de re
 - Não desenvolver diretamente em `master`.
 - Mudanças deverão ser pequenas, revisáveis, testáveis e rastreáveis.
 
-## Exceção de autenticação deste desafio
+## Autenticação e autorização neste desafio
 
-Por decisão expressa de escopo, este exercício não implementará autenticação nem autorização baseada na identidade do titular. Essa decisão representa risco aceito exclusivamente para a avaliação técnica e não caracteriza conformidade com OWASP API1, API2 ou API5, nem com CWE-306, CWE-639 ou CWE-862.
+Até 1º de outubro de 2026 vigorou uma exceção de escopo segundo a qual o exercício não teria autenticação nem autorização por titular. Essa exceção foi **revogada** nessa data por decisão do responsável pelo projeto. Enquanto as entregas F1 e F2 não forem concluídas, os endpoints existentes continuam tecnicamente anônimos; esse estado é transitório e não é mais um risco aceito.
 
+O desenho vigente está em `ESPECIFICACAO_AUTENTICACAO.md`:
+
+- todo endpoint bancário exige JWT válido; a API apenas valida tokens de um emissor externo configurável;
+- a conta só pode ser movimentada ou consultada pelo correntista registrado como seu titular, identificado pela claim `sub`;
 - validação de existência e situação da conta não substitui autenticação ou autorização;
-- os endpoints bancários permanecerão tecnicamente anônimos;
-- respostas devem reduzir enumeração e exposição desnecessária de dados;
-- TLS, rate limiting, limites de payload, idempotência, logs e correlação serão controles compensatórios obrigatórios;
-- esta exceção não poderá ser reutilizada em ambiente real ou produção sem nova análise e aprovação formal de risco.
+- respostas devem reduzir enumeração: conta de outro correntista recebe a mesma resposta de conta não cadastrada;
+- TLS, rate limiting, limites de payload, idempotência, logs e correlação permanecem controles obrigatórios.
+
+Limitação aceita exclusivamente para a avaliação técnica: o emissor usado no ambiente do desafio é uma ferramenta de teste que não autentica pessoas. Ele não poderá ser usado em ambiente real, e a adoção de um provedor real deverá passar por nova análise de risco. A existência de autenticação neste desafio não caracteriza, por si só, conformidade com OWASP API1, API2 ou API5, nem com CWE-306, CWE-639 ou CWE-862.
 
 ## Referenciais adotados
 

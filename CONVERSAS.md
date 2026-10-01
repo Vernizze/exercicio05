@@ -7,6 +7,7 @@ Este arquivo é o registro oficial das conversas sobre o desenvolvimento deste p
 - Cada interação deve informar a **data**, o **modo de atuação** e o **autor**.
 - **Usuário** identifica as solicitações e observações do responsável pelo projeto.
 - **Cline (assistente)** identifica minhas respostas, análises e ações.
+- A partir da Interação 027, **Claude Code (assistente)** identifica as respostas, análises e ações do novo assistente; os registros anteriores assinados pelo Cline permanecem inalterados.
 - **Plan** indica exploração, análise e planejamento, sem alterações no projeto.
 - **Act** indica que alterações no projeto estão autorizadas e podem ser executadas.
 - Novas conversas devem ser acrescentadas em ordem cronológica, preservando o histórico anterior.
@@ -640,5 +641,200 @@ A documentação foi atualizada sem qualquer implementação funcional. Em `ESPE
 Em `TODO.md`, a Entrega D recebeu a revisão documental e novos critérios de aceite; a Entrega E foi reescrita com a sequência E1 migração e projeção persistida, E2 núcleo de consulta, E3 contrato HTTP e E4 limites, logs, inventário, gate e commit funcional, com a decisão arquitetural de CQRS local sem cache; SEC-005 foi atualizado com a estratégia de centavos inteiros na projeção; e o histórico de atualização recebeu a entrada correspondente.
 
 Nenhum código-fonte, teste, configuração funcional, dependência, schema, fixture ou dado operacional foi alterado, e nenhum commit foi criado nesta interação.
+
+---
+
+## Registro de troca do motor de IA — 1º de outubro de 2026
+
+Conforme a regra permanente definida na Interação 002, fica registrada a troca do assistente e do modelo de IA a partir da Interação 027.
+
+| Item | Anterior | Novo |
+| --- | --- | --- |
+| Agente de programação | Cline | Claude Code (extensão para VS Code) |
+| Fornecedor do modelo | OpenAI | Anthropic |
+| Nome e versão do modelo | não expostos na sessão anterior | Opus 5.5 (`claude-opus-5-5`) |
+
+- **Última interação do assistente anterior:** Interação 026.
+- **Primeira interação do novo assistente:** Interação 027.
+- **Continuidade:** o novo assistente não possui memória das sessões anteriores; seu conhecimento do projeto vem exclusivamente da leitura dos documentos e do repositório.
+
+---
+
+## Interação 027 — 1º de outubro de 2026
+
+**Modo: Plan**
+
+### Usuário
+
+> para começar, verifique os arquivos .md desse projeto e me diga o que vc conseguiu entender
+
+### Claude Code (assistente)
+
+Olá, avaliadores. Sou o **Claude Code**, assistente de programação da Anthropic, e passo a acompanhar o responsável por este projeto a partir desta interação, dando continuidade ao trabalho registrado pelo Cline.
+
+Foram lidos os seis documentos Markdown da raiz: `TODO.md`, `CONVERSAS.md`, `ESPECIFICACAO_MOVIMENTACAO.md`, `ESPECIFICACAO_SALDO.md`, `DIRETRIZES_SEGURANCA.md` e `RELATORIO_SEGURANCA.md`. A leitura foi feita sobre o commit `f3f0603`, com workspace limpo no branch `20260930`. Somente os documentos foram lidos; o código não foi conferido contra o que eles afirmam.
+
+O entendimento apresentado ao usuário foi:
+
+- o projeto é uma API bancária em .NET 10 com ASP.NET Core, MediatR, Dapper e SQLite, recebida semipronta para um desafio técnico cujo enunciado está em `Questao5/Questão 5.docx`;
+- os sete marcos de segurança Zero Trust, TODO-001 (bootstrap SQLite) e TODO-002 (movimentação idempotente, entregas C1 a C3) estão concluídos, e a C4 encerrou a limpeza do template com 80 testes;
+- a Entrega D especificou a consulta de saldo sem implementação, e a Entrega E permanece bloqueada até autorização expressa;
+- `TODO.md` é a fonte canônica de estado, `CONVERSAS.md` é a evidência cronológica e os demais documentos são especificações, guardrails ou fotografia histórica;
+- as regras de trabalho vigentes são: branch `20260930`, nenhuma implementação funcional sem autorização específica, gate `scripts/Invoke-SecurityGate.ps1` em toda mudança, fixture `Questao5/database.sqlite` imutável e autenticação/autorização como risco aceito somente no exercício.
+
+Foram apontadas três observações:
+
+1. a troca de assistente e de modelo precisava ser registrada neste histórico, o que não podia ser feito em modo Plan;
+2. a tabela de erros de `ESPECIFICACAO_MOVIMENTACAO.md` não lista os HTTP 413 e 504 que `TODO.md` cita como implementados em C2 e C3;
+3. SEC-007 aparece como bloqueado por SEC-003 e SEC-004, que já estão concluídos.
+
+Nenhum arquivo foi alterado nesta interação, pois o modo vigente era Plan.
+
+---
+
+## Interação 028 — 1º de outubro de 2026
+
+**Modo: Act**
+
+### Usuário
+
+> certo, duas coisas.  Primeiro, releia os arquivos .md, eles foram atualizados. Depois registre sua entrada no projeto no arquivo de CONVERSAS.md
+
+### Claude Code (assistente)
+
+Os seis documentos Markdown foram relidos integralmente. O branch `20260930` foi confirmado, agora no commit `5c905a0`, com workspace e index limpos antes desta alteração.
+
+Em relação à leitura da Interação 027, as mudanças encontradas foram:
+
+- `CONVERSAS.md` recebeu as Interações 025 e 026, que registram a preocupação com acessos simultâneos, a decisão por CQRS local com tabela consolidada e a exclusão do cache em memória;
+- `ESPECIFICACAO_SALDO.md` substituiu o cálculo em tempo real pela projeção persistida `saldo_conta`, com centavos inteiros, coluna `versao`, atualização na mesma transação imediata do movimento, preenchimento inicial, reconciliação e a seção que confirma o cenário centrado em conta;
+- `TODO.md` registrou a revisão documental da Entrega D, reescreveu a Entrega E como E1 migração e projeção persistida, E2 núcleo de consulta, E3 contrato HTTP e E4 limites, logs, inventário, gate e commit funcional, e atualizou SEC-005;
+- `ESPECIFICACAO_MOVIMENTACAO.md`, `DIRETRIZES_SEGURANCA.md` e `RELATORIO_SEGURANCA.md` não apresentaram diferenças em relação à leitura anterior.
+
+A releitura acrescentou duas observações às da Interação 027, que continuam válidas:
+
+1. a seção 3.3 de `ESPECIFICACAO_SALDO.md` ainda descreve `dataHoraConsulta` como obtida depois de "conta e movimentos" terem sido lidos, embora a consulta agora leia `saldo_conta` e não os movimentos;
+2. o último item da seção 3 de `ESPECIFICACAO_MOVIMENTACAO.md` ainda descreve a futura consulta de saldo somando cada valor persistido em `decimal`, estratégia substituída pela projeção.
+
+Essas observações e as da Interação 027 estão registradas apenas neste histórico; não foram incorporadas ao `TODO.md` nem corrigidas nas especificações, pois a solicitação se limitou ao registro de entrada.
+
+Neste arquivo foram feitas três inclusões: a linha de convenção que identifica o **Claude Code (assistente)** a partir da Interação 027, o registro de troca do motor de IA e as Interações 027 e 028. Os registros anteriores do Cline não foram modificados.
+
+Nenhum código-fonte, teste, configuração, dependência, schema, fixture ou outro documento foi alterado, o gate não foi executado por se tratar de mudança exclusivamente documental neste histórico, e nenhum commit foi criado. A Entrega E permanece bloqueada.
+
+---
+
+## Interação 029 — 1º de outubro de 2026
+
+**Modo: Plan**
+
+### Usuário
+
+> certo, vamos manter os acordos feitos anterioremente e quero que vc levante o que falta para fecharmos nosso escopo. Quando vc tiver essa resposta falamos dos próximos passos
+
+### Claude Code (assistente)
+
+Os acordos anteriores foram mantidos. O levantamento cruzou o enunciado `Questao5/Questão 5.docx`, extraído de forma passiva do pacote Open XML, com o `TODO.md` e o código-fonte. Foi feito somente por leitura; build, testes e gate não foram executados nessa interação.
+
+Itens obrigatórios do enunciado ainda não atendidos:
+
+1. a consulta de saldo (Entrega E), integralmente pendente;
+2. os tipos `INVALID_VALUE` e `INVALID_TYPE`, que não chegam ao cliente: valor não positivo e tipo diferente de `C`/`D` são barrados pela validação do DTO `CreateMovementRequest` e respondidos como erro de validação por campo, sem `code`. Os códigos existem em `MovementRequestNormalizer`, mas são inalcançáveis pelo endpoint, e o teste atual exige apenas a propriedade `errors`. Esse achado não constava em nenhum documento e diverge da seção 2.4 de `ESPECIFICACAO_MOVIMENTACAO.md`.
+
+Pontos extras do enunciado ainda não atendidos: documentação Swagger com atributos, retornos possíveis e exemplos (há apenas `AddSwaggerGen()` sem configuração e quatro `ProducesResponseType`); e testes unitários com NSubstitute (o pacote está referenciado, mas nenhum teste o utiliza). Dapper e Mediator estão atendidos; o lado de consulta do CQRS depende da Entrega E.
+
+Também foram apontados: os critérios de SEC-005, SEC-015, SEC-017 e SEC-019 que fecham junto com a Entrega E; os itens dependentes de infraestrutura (SEC-007, SEC-011 a SEC-014 e SEC-020 a SEC-023 e o pacote legado do MediatR), que exigem decisão formal de escopo; os resíduos documentais já listados nas Interações 027 e 028; a ausência de README; e a falta de definição da forma de entrega.
+
+Nenhum arquivo foi alterado nesta interação, pois o modo vigente era Plan.
+
+---
+
+## Interação 030 — 1º de outubro de 2026
+
+**Modo: Plan**
+
+### Usuário
+
+> vamos nos ater a ese ponto aqui Consulta de saldo (Entrega E) primeiro. Temois uma relaçào entre Conta e Dono da Conta em nossa modelagem atual ou na que recebemos do projeto original que veio do propoente desse desafio técnico?
+
+### Claude Code (assistente)
+
+Foi respondido que não existe essa relação, nem na modelagem atual nem na recebida do proponente. O enunciado define três tabelas (`contacorrente`, `movimento` e `idempotencia`) e nenhuma de pessoa ou cliente; `contacorrente` possui apenas `idcontacorrente`, `numero`, `nome` e `ativo`, e `nome` é um texto descritivo do titular. A única chave estrangeira do schema liga `movimento` a `contacorrente`. O bootstrap e o validador de schema reproduzem exatamente essa estrutura, e as seis contas do seed não trazem documento ou identificador de cliente.
+
+Foi lembrado que o ponto já estava registrado na Interação 025, na seção 2.1 de `ESPECIFICACAO_SALDO.md` e no risco aceito de SEC-002. Nenhum arquivo foi alterado.
+
+---
+
+## Interação 031 — 1º de outubro de 2026
+
+**Modo: Plan**
+
+### Usuário
+
+> vamos ter de ajustar isso, está muito frágil essa ligação. Considere o esforço de termos o nome do correntista (já temos agora) e o Id dele, que receberemos via token jwt de autenticação. E não temos autenticação também hoje, o que ns leva a ter de implementar isso, então adicone esses pontos na análise e me digo o que precisaremos ajustar
+
+### Claude Code (assistente)
+
+Foi apresentada a análise de impacto. A mudança deixa de ser um ajuste dentro da Entrega E e passa a ser uma entrega anterior a ela, que revoga os riscos aceitos de SEC-001 e SEC-002 e reabre código e testes da movimentação já entregue; em tamanho, é comparável às entregas C2 e C3 somadas. Foi destacado que os dados do proponente não possuem identificador de correntista, de modo que os identificadores serão definidos por este projeto no seed.
+
+Os ajustes levantados foram: autenticação JWT (pacote `Microsoft.AspNetCore.Authentication.JwtBearer`, `UseAuthentication`, política padrão, validação de assinatura, emissor, audiência, validade e algoritmo, configuração sem segredo versionado e resposta 401); vínculo conta–correntista em tabela nova e aditiva, na mesma migração `user_version = 2` da projeção de saldo; autorização por titular no saldo e na movimentação, com a idempotência amarrada ao correntista e limites por identidade; eventos de log de autenticação e de acesso negado; esquema Bearer no Swagger; adaptação de todos os testes HTTP, hoje anônimos, e novos testes negativos; e atualização das diretrizes, do `TODO.md` e das duas especificações.
+
+Foram submetidas quatro decisões ao usuário, com recomendação: quem emite o token; se a movimentação também exige titularidade; qual resposta dar para conta de outro correntista; e o formato do identificador do correntista. Nenhum arquivo foi alterado.
+
+---
+
+## Interação 032 — 1º de outubro de 2026
+
+**Modo: Plan**
+
+### Usuário
+
+> repostas:
+>
+> 1-Quem emite o token? Para a configuração de CIC/CD usaremos para esse desafio técnico docker compose. Teríamos algum provedor de autentcicação que possa nos atender e que seja leve e simples de usar? Lembrando que isso éspo um desafio técnico e não código produtivo, elementos de borda come ess nem foram soliitados no teste, é só mantenimento de consistência
+> 2-A movimentação também exige titularidade? Sim
+> 3-O que responder para conta de outro correntista? pode fazer conforme sua sugestão
+> 4-Qual o formato do Id do correntista? UUID mesmo
+
+### Claude Code (assistente)
+
+Ficaram decididos: a titularidade é exigida também na movimentação; conta de outro correntista responde `400 INVALID_ACCOUNT`, com o motivo real apenas em log; e o identificador do correntista é um UUID fixo no seed.
+
+Para o emissor foi recomendado o `mock-oauth2-server` (imagem `ghcr.io/navikt/mock-oauth2-server`). A documentação do projeto foi consultada nessa data e confirmou: contêiner único, descoberta OIDC e JWKS por emissor, suporte aos fluxos usuais e fixação da claim `sub` por `JSON_CONFIG`. A versão mais recente e o algoritmo de assinatura padrão não puderam ser confirmados e ficaram para a entrega de empacotamento. Foi registrado que a ferramenta se declara exclusiva para testes e não autentica pessoas: a validação feita pela API é real, mas o emissor é um substituto, limitação a ser aceita somente no desafio. O Keycloak foi apresentado como alternativa com login real e considerado desproporcional.
+
+Foram apontados os acréscimos de escopo dessa escolha: Dockerfile e `docker-compose.yml`, hoje inexistentes; a coincidência do emissor do token entre a rede interna do Compose e o `localhost` do avaliador; a busca de chaves por HTTP entre contêineres; testes automatizados independentes do contêiner; e a reavaliação parcial de SEC-021 e SEC-022.
+
+Foi proposta a sequência: documentação; autenticação na API; schema versão 2 com autorização na movimentação; consulta de saldo; e empacotamento. Nenhum arquivo foi alterado.
+
+---
+
+## Interação 033 — 1º de outubro de 2026
+
+**Modo: Act**
+
+### Usuário
+
+> pode seguir com essa sequencia
+
+### Claude Code (assistente)
+
+A autorização cobre a sequência proposta na Interação 032, identificada no roadmap como F0, F1, F2, E e G. O registro de cada entrega é feito a seguir, em subseções desta interação, à medida que cada uma é concluída.
+
+#### Entrega F0 — revisão documental
+
+Antes das alterações foram confirmados o branch `20260930` e o commit `5c905a0`, com `CONVERSAS.md` como única modificação pendente. O gate completo foi executado como linha de base e passou: restore bloqueado, auditoria direta e transitiva sem vulnerabilidades conhecidas, secret scanning sem achados, formatação e analisadores aprovados, build Release com zero avisos e zero erros, 80 testes aprovados e cobertura com nova execução em 80/80.
+
+Foi criado `ESPECIFICACAO_AUTENTICACAO.md`, que define: a API como validadora de tokens de um emissor externo configurável; o correntista como UUID recebido na claim `sub`; a tabela aditiva `titularidade_conta`, criada na migração para `user_version = 2` junto com `saldo_conta`; os seis identificadores de correntista gerados para o seed; a validação de assinatura, algoritmo, emissor, audiência, validade e sujeito; a ordem das validações e as respostas 401 `UNAUTHENTICATED` e 400 `INVALID_ACCOUNT` para conta alheia; a idempotência na representação `v2`, amarrada ao correntista; os limites por identidade; os eventos 5300 e 5301; o emissor `mock-oauth2-server` e sua limitação; a matriz de testes; e a sequência de entregas.
+
+Foram atualizados:
+
+- `DIRETRIZES_SEGURANCA.md`: a exceção de autenticação foi revogada e substituída pelo desenho vigente e pela limitação do emissor de teste;
+- `ESPECIFICACAO_MOVIMENTACAO.md`: nova seção 10 com as alterações planejadas, mantendo as seções 1 a 8 como estado implementado; a tabela de erros passou a listar 413, 415 e 504; e o item sobre o saldo na seção 3 foi alinhado à projeção persistida;
+- `ESPECIFICACAO_SALDO.md`: autenticação e titularidade no contrato, nos erros, no fluxo de leitura, nos limites, nos logs, na arquitetura, nos testes e nos riscos; a seção 3.3 deixou de mencionar a leitura de movimentos;
+- `TODO.md`: roadmap com F0, F1, F2, E e G e respectivos critérios de aceite; E1 absorvida pela F2; SEC-001 e SEC-002 reabertos; SEC-007 e SEC-008 ajustados; e os achados da Interação 029 registrados como TODO-003 a TODO-006, sem autorização de execução.
+
+Com isso, os resíduos documentais apontados nas Interações 027 e 028 foram corrigidos. As pendências TODO-003 a TODO-006 não foram iniciadas, pois o usuário decidiu tratar primeiro a consulta de saldo.
+
+O gate completo foi executado novamente após as alterações documentais e passou com os mesmos resultados da linha de base. A fixture `Questao5/database.sqlite` manteve o SHA-256 `E355A3EDB7D73E7784A7467513248D530C27CC989C624A35D13A188B2AA8DD3C`. Nenhum código-fonte, teste, configuração, dependência, schema ou dado operacional foi alterado. A Entrega F0 foi encerrada em commit documental isolado, que inclui também os registros das Interações 027 a 033.
 
 ---

@@ -87,8 +87,11 @@ Erros usam `application/problem+json`, o tratamento global existente e a extens�
 | Valor não positivo, acima do limite ou com escala maior que 2 | 400 | `INVALID_VALUE` | regra de negócio estável |
 | Tipo diferente de `C` ou `D` | 400 | `INVALID_TYPE` | regra de negócio estável |
 | Mesma chave com requisição normalizada diferente | 409 | `IDEMPOTENCY_CONFLICT` | conflito, não uma nova execução |
-| Limite de frequência excedido | 429 | `RATE_LIMIT_EXCEEDED` | inclui `Retry-After` quando calculável |
+| Corpo acima de 4 KiB | 413 | não aplicável | Problem Details correlacionado |
+| Media type diferente de `application/json` | 415 | não aplicável | Problem Details correlacionado |
+| Limite de frequência ou concorrência excedido | 429 | `RATE_LIMIT_EXCEEDED` | inclui `Retry-After` quando calculável |
 | Falha inesperada ou indisponibilidade do banco | 500 | sem detalhe interno | não expõe SQL, caminho ou exceção |
+| Timeout do servidor | 504 | `REQUEST_TIMEOUT` | Problem Details correlacionado |
 
 O conflito idempotente usa HTTP 409 porque a requisição isoladamente pode ser válida, mas é incompatível com o recurso de idempotência já identificado pela chave.
 
@@ -100,7 +103,7 @@ O conflito idempotente usa HTTP 409 porque a requisição isoladamente pode ser 
 - O limite por movimento é `9999999999.99`, reduzindo abuso e mantendo o contrato abaixo da capacidade de `decimal` e do texto canônico.
 - IDs e valores gerados pelo servidor não dependem da cultura ou do fuso da máquina.
 - Temporariamente, o repositório converte o `decimal` validado para o tipo aceito pelo `REAL` do SQLite somente no limite de persistência. Essa compatibilidade não elimina o risco de ponto flutuante e não conclui SEC-005.
-- A futura consulta de saldo deverá converter cada valor persistido para `decimal`, normalizá-lo para escala 2 e efetuar toda soma/subtração em `decimal`. A política final de arredondamento de cálculos derivados será `MidpointRounding.ToEven`, aplicada somente quando uma operação produzir escala superior a 2.
+- A consulta de saldo não somará o histórico a cada requisição: o saldo será mantido em centavos inteiros na projeção `saldo_conta`, atualizada na mesma transação do movimento, conforme `ESPECIFICACAO_SALDO.md`. A conversão de cada valor persistido para `decimal` fica restrita ao preenchimento inicial e à reconciliação da projeção.
 
 ## 4. Idempotência
 
@@ -289,3 +292,49 @@ O acesso a conta, movimento e idempotência não é dividido em repositórios qu
 ## 9. Governança de mudanças
 
 O TODO-002 foi concluído em 1º de outubro de 2026 após autorizações específicas para as entregas C1, C2 e C3. Qualquer mudança futura de rota, DTO, status HTTP, semântica idempotente, limite monetário ou estratégia transacional deverá atualizar este documento antes do código.
+
+## 10. Alterações planejadas — autenticação, titularidade e projeção de saldo
+
+As seções 1 a 8 descrevem o estado implementado até a Entrega C4, em que o endpoint é anônimo. A Entrega F0, de 1º de outubro de 2026, planejou as alterações abaixo, detalhadas em `ESPECIFICACAO_AUTENTICACAO.md` e `ESPECIFICACAO_SALDO.md`. Nenhuma delas está implementada; quando forem, as seções anteriores serão reconciliadas com o estado efetivo.
+
+### 10.1 Contrato HTTP
+
+- o endpoint passa a exigir `Authorization: Bearer <JWT>`; rota, DTO e resposta de sucesso não mudam;
+- o identificador do correntista vem somente da claim `sub`; o DTO continua fechado nos quatro campos atuais;
+- token ausente ou inválido retorna HTTP 401 com `code` `UNAUTHENTICATED` e header `WWW-Authenticate: Bearer`;
+- conta de outro correntista ou sem titularidade retorna HTTP 400 `INVALID_ACCOUNT`, com corpo idêntico ao de conta não cadastrada;
+- autenticação, autorização e identidade de titular deixam de estar fora do escopo.
+
+### 10.2 Algoritmo transacional
+
+Dentro da mesma transação imediata, a sequência passa a ser:
+
+1. consultar `idempotencia` pela chave normalizada e resolver repetição ou conflito;
+2. buscar a conta e validar existência;
+3. validar em `titularidade_conta` que a conta pertence ao correntista do token;
+4. validar situação ativa;
+5. inserir o movimento;
+6. atualizar `saldo_conta`, somando ou subtraindo o valor em centavos e incrementando `versao`;
+7. inserir o registro idempotente;
+8. confirmar.
+
+Qualquer falha anterior ao commit reverte movimento, saldo e idempotência juntos.
+
+### 10.3 Idempotência
+
+A representação canônica passa à versão `v2` e inclui o titular:
+
+```text
+v2|titular=04b276dc-0f45-4efc-bffc-911110198733|conta=FA99D033-7067-ED11-96C6-7C5DFA4A16C9|valor=125.50|tipo=C
+```
+
+A mesma chave usada por outro correntista retorna `409 IDEMPOTENCY_CONFLICT`. Registros `v1` não coincidem com representações `v2` e também produzem conflito na reutilização da chave.
+
+### 10.4 Limites e logs
+
+- o limite específico de 30 requisições por minuto passa a ser contado por correntista autenticado; o limite global de 120 por minuto por IP permanece e é aplicado antes da autenticação;
+- os eventos 5100–5105 permanecem; a negativa por titularidade é registrada pelo evento 5301 do componente `Security`, sem conta ou correntista em claro.
+
+### 10.5 Testes
+
+Os testes existentes passam a enviar token. São acrescentados os casos de autenticação, titularidade, idempotência entre correntistas e manutenção da projeção definidos nas matrizes de `ESPECIFICACAO_AUTENTICACAO.md` e `ESPECIFICACAO_SALDO.md`.
