@@ -4,9 +4,9 @@ Este documento registra pendências técnicas e funcionais identificadas durante
 
 ## Regra de priorização
 
-As correções funcionais identificadas durante a análise Zero Trust não fazem parte da execução atual. Neste momento, o trabalho está limitado às sete fases de segurança descritas abaixo.
+As correções funcionais identificadas durante a análise Zero Trust não faziam parte da execução inicial, que ficou limitada às sete fases de segurança descritas abaixo. Após a conclusão desse marco, cada pendência funcional continua exigindo planejamento e autorização específicos antes da implementação.
 
-Mesmo depois que as sete fases estiverem concluídas e validadas, os itens funcionais permanecerão com o estado **Bloqueado**. A conclusão do marco de segurança não autoriza nem inicia automaticamente qualquer correção funcional.
+Mesmo depois que as sete fases estiverem concluídas e validadas, os itens funcionais permanecem **Bloqueados** até que as etapas abaixo sejam cumpridas. A conclusão do marco de segurança não autoriza nem inicia automaticamente qualquer correção funcional.
 
 Antes de iniciar as pendências funcionais, será necessário:
 
@@ -117,11 +117,12 @@ Essa falha pode afetar diretamente a disponibilidade da tabela `idempotencia`, a
 
 ### TODO-002 — Implementar idempotência no serviço de movimentação
 
-- **Estado:** Bloqueado
+- **Estado:** Planejado — contrato e arquitetura fechados na Entrega B; implementação não iniciada
 - **Prioridade:** Alta
-- **Bloqueadores:** conclusão e validação das fases 1 a 7; discussão dos detalhes adicionais; autorização expressa do usuário
+- **Bloqueador atual:** autorização expressa e específica para implementar a especificação aprovada
 - **Dependência técnica:** TODO-001
 - **Estrutura de banco existente:** tabela `idempotencia`
+- **Especificação:** `ESPECIFICACAO_MOVIMENTACAO.md`
 
 #### Problema
 
@@ -133,13 +134,14 @@ Portanto, a existência da tabela representa somente uma estrutura inicial; o co
 
 #### Direção planejada
 
-- Receber uma identificação única em toda requisição de movimentação.
-- Normalizar ou serializar deterministicamente os dados relevantes da requisição.
-- Consultar a chave de idempotência antes de gerar um movimento.
-- Devolver o resultado original quando a mesma requisição for repetida.
-- Rejeitar de forma explícita a reutilização da mesma chave com conteúdo diferente.
-- Persistir o movimento e o registro idempotente na mesma transação.
-- Tratar concorrência para impedir que duas requisições simultâneas gerem movimentos duplicados.
+- Expor `POST /api/v1/movimentos` com DTO explícito contendo identificação da requisição, identificação da conta, valor decimal e tipo `C` ou `D`.
+- Usar UUID canônico como chave, representação interna versionada e determinística para a requisição e resultado mínimo versionado.
+- Devolver HTTP 200 com o mesmo ID original em repetições idênticas e HTTP 409 `IDEMPOTENCY_CONFLICT` quando a chave for reutilizada com payload diferente.
+- Persistir movimento e registro idempotente na mesma transação SQLite imediata.
+- Serializar escritores concorrentes pelo banco, sem lock em memória, mantendo a chave primária como defesa final.
+- Não reservar chaves para falhas de transporte, regra de negócio ou transações revertidas.
+- Usar `decimal`, escala máxima 2 e rejeição de arredondamento implícito, preservando temporariamente o `REAL` legado no limite de persistência.
+- Aplicar limites, logs e matriz de testes definidos em `ESPECIFICACAO_MOVIMENTACAO.md`.
 
 #### Critérios de aceite
 
@@ -225,10 +227,11 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-005 — Definir representação monetária determinística
 
-- **Estado:** Bloqueado — requer decisão de compatibilidade com o enunciado e o esquema recebido
+- **Estado:** Planejado — contrato da aplicação definido; implementação e mitigação do `REAL` pendentes
 - **Prioridade:** Alta
 - **Referenciais:** CWE-682 e CWE-1339; NIST SSDF PW.4 e PW.5
 - **Evidência:** a coluna `movimento.valor` está declarada como `REAL`, tipo de ponto flutuante binário inadequado para precisão financeira sem estratégia adicional.
+- **Decisão da Entrega B:** contratos e cálculos usarão `decimal`, entradas aceitarão no máximo duas casas sem arredondamento implícito e o limite por movimento será `9999999999.99`. O `REAL` será preservado temporariamente apenas por compatibilidade; a migração permanece fora de TODO-002.
 
 #### Critérios de aceite
 
@@ -269,10 +272,11 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-008 — Implementar limites de recursos e proteção contra abuso
 
-- **Estado:** Bloqueado — depende da definição dos endpoints e identidade do cliente
+- **Estado:** Planejado — limites do endpoint definidos; implementação pendente
 - **Prioridade:** Média; elevar para alta antes de disponibilizar os endpoints bancários
 - **Referenciais:** OWASP API4 e API6; CWE-770
 - **Evidência:** não há rate limiting, limites específicos de corpo, frequência, concorrência ou crescimento do fluxo de movimentação/idempotência.
+- **Decisão da Entrega B:** corpo de 4 KiB, timeout de 5 segundos, 30 requisições por minuto por IP no endpoint, limite global de 120 por minuto por IP, até 8 operações concorrentes sem fila e HTTP 429 para excesso. O uso de IP é controle compensatório restrito ao exercício anônimo.
 
 #### Critérios de aceite
 
@@ -375,10 +379,11 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-015 — Implementar logs estruturados de segurança
 
-- **Estado:** Bloqueado — depende dos fluxos funcionais e da estratégia de observabilidade
+- **Estado:** Planejado — eventos da movimentação definidos; implementação pendente
 - **Prioridade:** Média
 - **Referenciais:** MITRE ATT&CK v19.2; NIST SSDF RV.1; CWE-117
 - **Evidência:** o logger injetado não é utilizado e não há eventos explícitos para bootstrap, validação, autenticação, autorização, abuso ou idempotência.
+- **Decisão da Entrega B:** Event IDs 5100 a 5105 distinguirão primeira execução, repetição, conflito, rejeição de negócio, rollback e limite excedido. Payload, conta, valor, chave integral, SQL e connection string são proibidos nos logs.
 
 #### Critérios de aceite
 
@@ -410,6 +415,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - **Referenciais:** CWE-682; qualidade e rastreabilidade operacional
 - **Evidência de origem:** o endpoint de exemplo usava `DateTime.Now`; o contrato bancário ainda não define UTC, fuso ou formato.
 - **Evidência atual:** o uso residual foi substituído por `DateTime.UtcNow`; testes e novas persistências de teste usam `DateTimeOffset.UtcNow` e formato round-trip `O`.
+- **Decisão da Entrega B:** a movimentação obterá a data por relógio UTC injetável e persistirá `datamovimento` no formato legado `dd/MM/yyyy`, com cultura invariável. O formato externo e o fuso da futura consulta de saldo continuam pendentes.
 
 #### Critérios de aceite
 
@@ -438,6 +444,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - **Referenciais:** NIST SSDF PW.7, PW.8 e RV.1; OpenSSF
 - **Evidência de origem:** não existia projeto ou suíte de testes no repositório.
 - **Evidência atual:** `Questao5.Tests` usa lock file próprio, xUnit v3, Microsoft Testing Platform, NSubstitute, `WebApplicationFactory` e `coverlet.MTP`; 31 testes passam em Release. Há cobertura para configuração, banco temporário, bootstrap versionado e transacional, integridade referencial, hash da fixture, concorrência, rollback, correlação, validação, erro de negócio, exceção inesperada e logs sem dados sensíveis. A coleta em formato Cobertura permanece validada pelo gate local; os percentuais serão atualizados quando a próxima medição consolidada for registrada.
+- **Planejamento da Entrega B:** `ESPECIFICACAO_MOVIMENTACAO.md` define testes HTTP, monetários, transacionais, idempotentes, concorrentes, de conflito, rollback, abuso, cancelamento e conteúdo seguro dos logs que serão obrigatórios na implementação de TODO-002.
 
 #### Critérios de aceite
 
@@ -539,11 +546,13 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 1. Confirmar documentalmente a conclusão das sete fases de segurança.
 2. Apresentar ao usuário o relatório consolidado, os riscos residuais e as recomendações.
 3. Confirmar que nenhum código funcional foi alterado como consequência automática da conclusão dos marcos.
-4. Manter TODO-001 e TODO-002 como **Bloqueado**.
+4. Manter cada pendência funcional como **Bloqueada** até seu planejamento e sua autorização específicos.
 5. Interromper a execução e aguardar os detalhes adicionais do usuário.
 6. Somente após uma nova autorização expressa, elaborar um plano específico para as pendências funcionais.
 
-Não existe, neste documento, autorização antecipada para alterar o estado das pendências funcionais ou implementá-las.
+Este procedimento foi cumprido. TODO-001 recebeu autorização própria e foi concluído em 1º de outubro de 2026. TODO-002 recebeu autorização para planejamento na Entrega B e está **Planejado**, mas sua implementação continua condicionada a autorização expressa e específica.
+
+Não existe, neste documento, autorização antecipada para implementar outras pendências funcionais.
 
 ## Guardrails permanentes de segurança
 
@@ -570,3 +579,4 @@ Estes itens são controles contínuos e não devem ser marcados globalmente como
 - **30 de setembro de 2026:** adotados como guardrails permanentes OWASP API Security Top 10, CWE Top 25, CIS Benchmarks, NIST SSDF, OpenSSF e MITRE ATT&CK. Criado `DIRETRIZES_SEGURANCA.md`; o branch de trabalho definido é `20260930`.
 - **30 de setembro de 2026:** análise estática do código atual convertida no backlog SEC-001 a SEC-023, com prioridades, referenciais, evidências, dependências, critérios de aceite, controles positivos e limitações de avaliação.
 - **1º de outubro de 2026:** TODO-001, SEC-003 e SEC-004 concluídos após autorização específica. O bootstrap SQLite tornou-se versionado, estrito, idempotente, atômico e seguro para inicializações concorrentes. O gate completo passou com 31 testes, zero warnings, zero erros, sem vulnerabilidades conhecidas ou segredos detectados; a fixture manteve o SHA-256 esperado.
+- **1º de outubro de 2026:** Entrega B concluída após autorização específica. O contrato HTTP, a regra monetária, a canonicalização idempotente, a transação concorrente, os limites, os eventos de log e a matriz de testes de TODO-002 foram definidos em `ESPECIFICACAO_MOVIMENTACAO.md`. TODO-002 passou de Bloqueado para Planejado, sem implementação funcional.

@@ -432,3 +432,47 @@ A evidência de SEC-019 foi atualizada para refletir os 31 testes aprovados e a 
 Com essas validações concluídas, a entrega ficou autorizada para um commit isolado, sem incluir TODO-002 ou alterações bancárias posteriores.
 
 ---
+
+## Interação 017 — 1º de outubro de 2026
+
+**Modo: Act**
+
+### Usuário
+
+> Solicitou a execução da Entrega B planejada, posterior ao commit isolado da infraestrutura SQLite.
+
+### Cline (assistente)
+
+O branch `20260930` foi confirmado no commit limpo `e8d98efff73487bd7a4033032133dda85176e28b`. O enunciado de `Questao5/Questão 5.docx` foi novamente extraído de forma passiva do pacote Open XML e confirmou o contrato mínimo: identificação da requisição, identificação da conta, valor, tipo `C` ou `D`, HTTP 200 com ID do movimento e HTTP 400 para os quatro códigos de negócio exigidos.
+
+Foi criada `ESPECIFICACAO_MOVIMENTACAO.md`, fechando o planejamento de TODO-002 sem implementar o endpoint. A rota definida é `POST /api/v1/movimentos`, com DTO fechado, chave idempotente UUID no corpo, resposta com `idMovimento`, Problem Details correlacionado, conflito de reutilização em HTTP 409 e separação explícita entre idempotência e `X-Correlation-ID`.
+
+O contrato monetário adotará `decimal`, no máximo duas casas sem arredondamento implícito e limite de `9999999999.99`; o `REAL` do SQLite será preservado temporariamente apenas no adaptador de persistência, sem antecipar uma migração de SEC-005. A requisição idempotente será armazenada em forma canônica versionada, e o resultado conterá somente o ID original do movimento.
+
+O algoritmo planejado usa transação SQLite imediata, consulta da chave antes da validação mutável da conta, persistência atômica do movimento e do resultado e nenhuma reserva para falhas ou rollbacks. Repetições idênticas recuperam o resultado mesmo após mudança posterior no estado da conta; payload diferente com a mesma chave retorna `IDEMPOTENCY_CONFLICT`. Locks em memória foram descartados porque não protegem múltiplos processos.
+
+Também foram definidos corpo máximo de 4 KiB, timeout de 5 segundos, rate limits compensatórios por IP, limite de concorrência sem fila, Event IDs 5100 a 5105, proibição de dados bancários completos nos logs e matriz obrigatória de testes HTTP, monetários, concorrentes, de conflito, rollback, abuso e cancelamento. `TODO.md` foi atualizado para registrar que TODO-002, SEC-005, SEC-008 e SEC-015 possuem planejamento fechado, enquanto a implementação continua pendente de autorização específica. SEC-006, SEC-017 e SEC-019 tiveram seus critérios dependentes do endpoint incorporados ao plano.
+
+O gate completo foi executado após as alterações documentais: restore bloqueado, auditoria direta e transitiva sem vulnerabilidades conhecidas, secret scanning sem achados, formatação aprovada, build Release determinístico com zero avisos e zero erros, 31 testes aprovados e coleta de cobertura concluída.
+
+Nenhum código funcional, esquema SQLite, pacote, endpoint ou teste executável foi alterado nesta entrega de planejamento.
+
+---
+
+## Interação 018 — 1º de outubro de 2026
+
+**Modo: Act**
+
+### Usuário
+
+> Autorizou o encerramento e isolamento da Entrega B antes do início da implementação funcional de TODO-002.
+
+### Cline (assistente)
+
+Foi revisada a documentação pendente da Entrega B. Os registros históricos que afirmam que TODO-001 e TODO-002 estavam bloqueados em 30 de setembro de 2026 foram preservados, pois descrevem corretamente o estado daquele momento. A regra normativa em `TODO.md` foi atualizada para esclarecer que cada pendência permanece bloqueada até receber planejamento e autorização próprios.
+
+O histórico do TODO passou a registrar que TODO-001 foi autorizado e concluído separadamente e que TODO-002 recebeu autorização apenas para a Entrega B, passando ao estado Planejado sem implementação funcional. O escopo do commit permanece restrito a `ESPECIFICACAO_MOVIMENTACAO.md`, `TODO.md` e `CONVERSAS.md`.
+
+O gate completo da versão candidata ao commit concluiu restore bloqueado, auditoria direta e transitiva sem vulnerabilidades conhecidas, secret scanning sem achados, formatação aprovada, build Release determinístico com zero avisos e zero erros, 31 testes aprovados e coleta de cobertura.
+
+---
