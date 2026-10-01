@@ -14,6 +14,7 @@ Este arquivo é o registro oficial das conversas sobre o desenvolvimento deste p
 
 ---
 
+
 ## Interação 001 — 30 de setembro de 2026
 
 **Modo: Act**
@@ -534,5 +535,25 @@ A resposta interna do núcleo passou a indicar se o resultado veio de repetiçã
 Foram adicionados sete testes operacionais e de observabilidade para frequência global e específica, concorrência sem fila, timeout com cancelamento observado, eventos estáveis, fingerprint e conteúdo seguro dos logs. Os testes focados passaram em 7/7 e a suíte completa passou em 79/79 antes do gate final.
 
 O gate final concluiu restore bloqueado, auditoria direta e transitiva sem vulnerabilidades conhecidas, secret scanning sem achados, formatação aprovada, build Release determinístico com zero avisos e zero erros, 79 testes aprovados e coleta de cobertura. A fixture `Questao5/database.sqlite` manteve o SHA-256 `E355A3EDB7D73E7784A7467513248D530C27CC989C624A35D13A188B2AA8DD3C`. Nenhum arquivo foi preparado no index e nenhum commit foi criado.
+
+---
+
+## Interação 022 — 1º de outubro de 2026
+
+**Modo: Act**
+
+### Usuário
+
+> Identificou a divergência de status do roadmap e solicitou uma pausa de organização para: verificar se existem arquivos paralelos de controle além de `CONVERSAS.md` e `TODO.md`; incorporar ao TODO pendências eventualmente dispersas; e definir os próximos passos após a unificação. Reafirmou o roadmap com B.1, C1, C2, C3, C4 para limpeza/documentação/gate/commit e D para planejamento da consulta de saldo.
+
+### Cline (assistente)
+
+Foi inventariado o repositório e confirmada a existência de cinco documentos Markdown rastreados. Apenas `TODO.md` e `CONVERSAS.md` exercem controle contínuo: o primeiro consolida escopo, estado e pendências; o segundo preserva a evidência cronológica. `ESPECIFICACAO_MOVIMENTACAO.md` é uma especificação técnica, `DIRETRIZES_SEGURANCA.md` contém guardrails permanentes e `RELATORIO_SEGURANCA.md` é uma fotografia histórica encerrada em 30 de setembro de 2026. O enunciado `Questao5/Questão 5.docx` é fonte de requisitos, não backlog. Não foi encontrado um terceiro arquivo de controle concorrente.
+
+O `TODO.md` passou a declarar formalmente essa governança documental e a regra de que toda pendência acionável descoberta em documentos especializados, relatórios ou conversas deve ser registrada ou referenciada nele. Relatórios históricos permanecem preservados, mesmo quando descrevem estados antigos, para não apagar a evidência temporal.
+
+O roadmap foi consolidado: B.1 e C1–C3 estão concluídas; C4 é a próxima entrega e cobre remoção dos resíduos de template, reconciliação documental, revisão final, gate completo, integridade da fixture e commit funcional isolado; D ocorrerá depois de C4 e será limitada ao planejamento da consulta de saldo. A implementação do saldo não foi autorizada nem iniciada.
+
+Também foram reconciliadas inconsistências objetivas do backlog: TODO-002 agora aparece concluído no procedimento pós-marcos; controles monetários já entregues foram distinguidos das pendências de saldo e migração; os logs 5100–5105 de C3 passaram a constar como evidência parcial de SEC-015; e a remoção do endpoint de exemplo foi alocada à C4. Nenhum código-fonte, teste, configuração funcional, staging ou commit foi alterado nesta pausa.
 
 ---

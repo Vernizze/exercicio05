@@ -2,6 +2,64 @@
 
 Este documento registra pendências técnicas e funcionais identificadas durante a análise do projeto recebido.
 
+## Governança documental e fontes de verdade
+
+Os documentos do projeto possuem responsabilidades distintas e não constituem backlogs concorrentes:
+
+- `TODO.md`: fonte canônica do escopo, estado atual, pendências, dependências e próximos passos;
+- `CONVERSAS.md`: evidência cronológica das solicitações, decisões e ações, sem substituir o estado consolidado deste TODO;
+- `ESPECIFICACAO_MOVIMENTACAO.md`: contrato técnico especializado da movimentação; divergências de estado devem ser reconciliadas neste TODO;
+- `DIRETRIZES_SEGURANCA.md`: guardrails permanentes aplicáveis a cada mudança, não um cronograma paralelo;
+- `RELATORIO_SEGURANCA.md`: fotografia histórica encerrada em 30 de setembro de 2026; estados antigos nele preservados não representam o andamento corrente;
+- `Questao5/Questão 5.docx`: enunciado original e fonte de requisitos, não documento de controle.
+
+Pendências acionáveis descobertas em qualquer especificação, relatório, diretriz ou conversa devem ser registradas ou referenciadas neste arquivo. Documentos históricos não serão reescritos para aparentar estado corrente; a atualização ocorrerá aqui e em `CONVERSAS.md`.
+
+## Roadmap consolidado
+
+| Entrega | Estado | Escopo consolidado |
+| --- | --- | --- |
+| B.1 | Concluída | Revisar e commitar a especificação da movimentação. |
+| C1 | Concluída | Implementar o núcleo transacional e idempotente. |
+| C2 | Concluída | Implementar o endpoint e o contrato HTTP. |
+| C3 | Concluída | Implementar limites operacionais, logs e testes de abuso. |
+| C4 | Próxima entrega | Limpeza do template, reconciliação documental, gate final e commit funcional consolidado. |
+| D | Planejada após C4 | Planejar a consulta de saldo, sem implementação antecipada. |
+
+### Entrega C4 — limpeza, documentação, gate e commit funcional
+
+- **Estado:** Planejada — próxima etapa autorizável
+- **Dependências:** C1, C2 e C3 concluídas; workspace limpo no commit `025ff18`
+- **Limite:** não implementar consulta de saldo, autenticação, autorização, CI/CD ou mudanças dependentes de infraestrutura
+
+#### Escopo e critérios de aceite
+
+- [ ] Remover `WeatherForecastController`, `WeatherForecast` e referências residuais do template.
+- [ ] Confirmar que Swagger e o inventário expõem somente endpoints intencionais.
+- [ ] Reconciliar `TODO.md`, `CONVERSAS.md` e `ESPECIFICACAO_MOVIMENTACAO.md` com o estado final da movimentação, sem reescrever relatórios históricos.
+- [ ] Revisar comentários, arquivos gerados, configurações e dependências para detectar resíduos ou documentação desatualizada.
+- [ ] Executar o gate completo: restore bloqueado, auditoria direta/transitiva, secret scanning, formatação/analisadores, build Release determinístico, testes e cobertura.
+- [ ] Confirmar novamente a integridade da fixture `Questao5/database.sqlite` pelo SHA-256 esperado.
+- [ ] Revisar o diff final e garantir ausência de mudanças de escopo ou dados operacionais.
+- [ ] Criar um commit funcional isolado da C4 somente após todos os critérios anteriores passarem.
+- [ ] Encerrar com workspace e index limpos e registrar as evidências em `CONVERSAS.md` e neste TODO.
+
+### Entrega D — planejamento da consulta de saldo
+
+- **Estado:** Planejada — iniciar somente após o encerramento da C4 e autorização específica
+- **Escopo inicial:** extrair e consolidar requisitos; definir rota, DTOs, respostas HTTP, cálculo monetário, data/hora, segurança, logs, arquitetura e matriz de testes
+- **Limite:** a Entrega D é de planejamento; implementação da consulta de saldo exigirá entrega e autorização posteriores
+
+#### Critérios de aceite do planejamento
+
+- [ ] Validar os requisitos do enunciado e as decisões monetárias já registradas.
+- [ ] Definir contrato HTTP versionado e comportamento para conta inexistente ou inativa.
+- [ ] Definir cálculo determinístico de créditos menos débitos, incluindo saldo `0.00` sem movimentos.
+- [ ] Definir formato externo, UTC/fuso e serialização determinística da data e hora da consulta.
+- [ ] Mapear riscos, limites, logs sem dados excessivos e redução de enumeração.
+- [ ] Definir arquitetura e testes positivos, negativos, monetários, temporais, de abuso e regressão.
+- [ ] Registrar a especificação antes de qualquer implementação.
+
 ## Regra de priorização
 
 As correções funcionais identificadas durante a análise Zero Trust não faziam parte da execução inicial, que ficou limitada às sete fases de segurança descritas abaixo. Após a conclusão desse marco, cada pendência funcional continua exigindo planejamento e autorização específicos antes da implementação.
@@ -180,7 +238,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 - [x] A ausência de autenticação e o risco residual estão documentados.
 - [x] Está documentado que a decisão se limita ao exercício e é proibida para produção.
-- [ ] Aplicar controles compensatórios: TLS, rate limiting, limites de entrada, logs, correlação e redução de enumeração.
+- [ ] Aplicar controles compensatórios: rate limiting, limites de entrada, logs e correlação estão implementados na movimentação; TLS de produção e revisão final de enumeração dependem do ambiente e das próximas entregas.
 - [ ] Reabrir este item antes de qualquer implantação real.
 
 ### SEC-002 — Implementar autorização em nível de conta e função
@@ -195,7 +253,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 - [x] A impossibilidade de autorização por titular sem identidade está documentada.
 - [x] Está documentado que conta existente/ativa não equivale a conta autorizada.
-- [ ] DTOs devem expor apenas propriedades necessárias e impedir overposting.
+- [x] O DTO da movimentação expõe apenas propriedades necessárias e impede overposting.
 - [ ] Respostas devem reduzir enumeração e exposição desnecessária.
 - [ ] Reabrir este item antes de qualquer implantação real.
 
@@ -241,15 +299,15 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 #### Critérios de aceite
 
-- [ ] A unidade de armazenamento, escala e regra de arredondamento estão documentadas.
-- [ ] A API usa `decimal` nos contratos e cálculos monetários.
-- [ ] É avaliado e decidido o uso de centavos em `INTEGER` ou uma mitigação compatível com o esquema exigido.
+- [x] A unidade de armazenamento, escala e regra de arredondamento estão documentadas, incluindo a limitação do `REAL` legado.
+- [x] A API de movimentação usa `decimal` nos contratos e cálculos monetários.
+- [x] O uso de centavos em `INTEGER` foi avaliado; decidiu-se por mitigação temporária compatível com o esquema legado e migração futura separada.
 - [ ] Saldo e movimentações mantêm precisão em casos limítrofes e repetidos.
 - [ ] Existem testes para centavos, arredondamento, limites e soma de muitos movimentos.
 
 ### SEC-006 — Habilitar e testar integridade referencial SQLite
 
-- **Estado:** Concluído no núcleo em 1º de outubro de 2026 — cobertura HTTP será adicionada em C2
+- **Estado:** Concluído em 1º de outubro de 2026 — núcleo e cobertura HTTP validados
 - **Prioridade:** Média
 - **Referenciais:** OWASP API8; CWE-20 e CWE-703
 - **Evidência de origem:** a string de conexão não habilitava explicitamente `Foreign Keys=True`; o comportamento efetivo dependia da conexão e da compilação da biblioteca nativa.
@@ -260,7 +318,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - [x] Foreign keys são habilitadas explicitamente em toda conexão aplicável.
 - [x] O bootstrap valida o estado de `PRAGMA foreign_keys`.
 - [x] Movimento associado a conta inexistente é rejeitado pelo banco e pela aplicação.
-- [x] Existem testes de integração para registro órfão no banco e rejeição na camada de aplicação; a cobertura HTTP será adicionada com o endpoint.
+- [x] Existem testes de integração para registro órfão no banco e rejeição nas camadas de aplicação e HTTP.
 
 ### SEC-007 — Uniformizar o tipo da chave estrangeira de conta
 
@@ -387,18 +445,19 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-015 — Implementar logs estruturados de segurança
 
-- **Estado:** Planejado — eventos da movimentação definidos; implementação pendente
+- **Estado:** Em andamento — eventos da movimentação implementados e testados; cobertura global e operação dependem das próximas entregas e do ambiente
 - **Prioridade:** Média
 - **Referenciais:** MITRE ATT&CK v19.2; NIST SSDF RV.1; CWE-117
-- **Evidência:** o logger injetado não é utilizado e não há eventos explícitos para bootstrap, validação, autenticação, autorização, abuso ou idempotência.
+- **Evidência de origem:** o logger injetado não era utilizado e não havia eventos explícitos para bootstrap, validação, autenticação, autorização, abuso ou idempotência.
 - **Decisão da Entrega B:** Event IDs 5100 a 5105 distinguirão primeira execução, repetição, conflito, rejeição de negócio, rollback e limite excedido. Payload, conta, valor, chave integral, SQL e connection string são proibidos nos logs.
+- **Evidência C3:** `MovementLogger` implementa e testa os Event IDs 5100 a 5105, fingerprint truncado da chave, campos estruturados e ausência de conta, valor, payload, chave integral, SQL, caminho do banco e mensagem bruta de exceção.
 
 #### Critérios de aceite
 
-- [ ] Eventos possuem IDs estáveis, timestamp UTC, nível, componente, resultado e campos estruturados.
+- [x] Os eventos da movimentação possuem IDs estáveis, nível, componente, resultado e campos estruturados; timestamp é fornecido pelo pipeline de logging.
 - [ ] São registrados bootstrap, falhas de validação, autenticação, autorização, rate limiting, idempotência, rollback e exceções.
-- [ ] Campos controlados pelo usuário não permitem log forging.
-- [ ] Senhas, tokens, connection strings e payloads bancários completos não são registrados.
+- [x] Os campos controlados usados nos eventos da movimentação são validados, normalizados ou derivados, sem interpolação livre suscetível a log forging.
+- [x] Os testes da movimentação confirmam ausência de senhas, tokens, connection strings, payloads bancários completos e demais dados proibidos.
 - [ ] Eventos são associados a Detection Strategies/Analytics aplicáveis e testados.
 
 ### SEC-016 — Implementar correlação e rastreabilidade de requisições
@@ -414,7 +473,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - [x] Toda resposta e evento relevante possui identificador de correlação.
 - [x] Correlation ID e chave de idempotência têm semânticas distintas.
 - [x] IDs externos são validados e normalizados antes do uso em logs.
-- [x] É possível rastrear a requisição entre entrada, resposta e erro; a associação com movimentações persistidas será mantida quando o fluxo bancário existir.
+- [x] É possível rastrear a requisição entre entrada, resposta, logs e resultado da movimentação, preservando a distinção entre correlação e idempotência.
 
 ### SEC-017 — Padronizar datas e horários
 
@@ -435,7 +494,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-018 — Remover endpoint residual de exemplo
 
-- **Estado:** Pendente — executar quando endpoints reais estiverem disponíveis
+- **Estado:** Planejado para a Entrega C4 — o endpoint real de movimentação já está disponível
 - **Prioridade:** Baixa
 - **Referenciais:** OWASP API9
 - **Evidência:** `/WeatherForecast` permanece exposto e não faz parte do requisito bancário.
@@ -452,7 +511,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - **Prioridade:** Alta
 - **Referenciais:** NIST SSDF PW.7, PW.8 e RV.1; OpenSSF
 - **Evidência de origem:** não existia projeto ou suíte de testes no repositório.
-- **Evidência atual:** `Questao5.Tests` usa lock file próprio, xUnit v3, Microsoft Testing Platform, NSubstitute, `WebApplicationFactory` e `coverlet.MTP`; 31 testes passam em Release. Há cobertura para configuração, banco temporário, bootstrap versionado e transacional, integridade referencial, hash da fixture, concorrência, rollback, correlação, validação, erro de negócio, exceção inesperada e logs sem dados sensíveis. A coleta em formato Cobertura permanece validada pelo gate local; os percentuais serão atualizados quando a próxima medição consolidada for registrada.
+- **Evidência atual:** `Questao5.Tests` usa lock file próprio, xUnit v3, Microsoft Testing Platform, NSubstitute, `WebApplicationFactory` e `coverlet.MTP`; 79 testes passam em Release. Há cobertura para configuração, banco temporário, bootstrap versionado e transacional, integridade referencial, hash da fixture, movimentação, contrato HTTP, idempotência, concorrência, rollback, timeout, abuso operacional, correlação, erros e logs sem dados sensíveis. A coleta em formato Cobertura permanece validada pelo gate local.
 - **Planejamento da Entrega B:** `ESPECIFICACAO_MOVIMENTACAO.md` define testes HTTP, monetários, transacionais, idempotentes, concorrentes, de conflito, rollback, abuso, cancelamento e conteúdo seguro dos logs que serão obrigatórios na implementação de TODO-002.
 - **Evidência C1:** a suíte passou a ter 55 testes, incluindo 28 casos focados no núcleo da movimentação para canonicalização, limites monetários, tipos, contas, persistência, repetição, conflito, rollback, cancelamento e concorrência idêntica ou conflitante.
 - **Evidência C2:** a suíte passou a ter 72 testes, incluindo 17 casos HTTP para crédito, débito, repetição, conflito, contas inválidas, JSON malformado, campos ausentes, propriedade desconhecida, UUID, valores, tipo, media type e corpo de 4 KiB.
@@ -562,7 +621,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 5. Interromper a execução e aguardar os detalhes adicionais do usuário.
 6. Somente após uma nova autorização expressa, elaborar um plano específico para as pendências funcionais.
 
-Este procedimento foi cumprido. TODO-001 recebeu autorização própria e foi concluído em 1º de outubro de 2026. TODO-002 recebeu autorização para planejamento na Entrega B e está **Planejado**, mas sua implementação continua condicionada a autorização expressa e específica.
+Este procedimento foi cumprido. TODO-001 recebeu autorização própria e foi concluído em 1º de outubro de 2026. TODO-002 foi planejado na Entrega B, implementado nas entregas C1 a C3 e concluído em 1º de outubro de 2026. C4 é a próxima entrega do roadmap, e D permanece limitada ao planejamento da consulta de saldo.
 
 Não existe, neste documento, autorização antecipada para implementar outras pendências funcionais.
 
@@ -595,3 +654,4 @@ Estes itens são controles contínuos e não devem ser marcados globalmente como
 - **1º de outubro de 2026:** Entrega C1 implementou o núcleo transacional e idempotente da movimentação com MediatR, Dapper e SQLite, sem endpoint HTTP. Testes cobrem regras, atomicidade, repetição, conflito, rollback, cancelamento e concorrência; TODO-002 passou a Em andamento, aguardando C2 e C3.
 - **1º de outubro de 2026:** Entrega C2 implementou `POST /api/v1/movimentos`, DTO fechado, JSON estrito, validação automática, Problem Details para conflito e limite de corpo de 4 KiB. A suíte atingiu 72 testes; C3 permanece pendente para limites operacionais e logs.
 - **1º de outubro de 2026:** Entrega C3 implementou timeout de 5 segundos, rate limits de 30 e 120 requisições por minuto por IP, concorrência máxima de 8 sem fila, respostas 429/504 correlacionadas e logs 5100–5105 sem dados bancários. A suíte atingiu 79 testes e TODO-002 foi concluído.
+- **1º de outubro de 2026:** pausa de organização concluída. `TODO.md` foi confirmado como fonte canônica de escopo e andamento; documentos especializados e históricos foram classificados sem criar backlog paralelo. O roadmap foi consolidado com C4 para limpeza, documentação, gate e commit funcional, seguida da Entrega D para planejar a consulta de saldo. Estados evidentemente desatualizados de segurança foram reconciliados com as evidências de C1 a C3.
