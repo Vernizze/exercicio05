@@ -578,3 +578,25 @@ O gate completo concluiu restore bloqueado, auditoria direta e transitiva sem vu
 SEC-018 foi concluído, a C4 foi encerrada e a Entrega D passou a ser a próxima etapa planejável, ainda limitada à especificação da consulta de saldo. O commit funcional isolado e a confirmação do workspace limpo foram executados no fechamento desta interação.
 
 ---
+
+## Interação 024 — 1º de outubro de 2026
+
+**Modo: Act**
+
+### Usuário
+
+> [TASK RESUMPTION] Please continue where you left off.
+
+### Cline (assistente)
+
+A execução foi retomada após o fechamento da C4. Foram confirmados o branch `20260930`, o commit `4a8ceb15cff4bffde508cc4f2d12c69059639ea9` como ponto inicial e o workspace/index limpos. Como o roadmap definia D como a próxima entrega e a limitava ao planejamento, nenhuma implementação funcional foi antecipada.
+
+O enunciado original, o schema SQLite, a implementação da movimentação, os testes e as pendências de segurança foram inventariados. A especificação `ESPECIFICACAO_SALDO.md` consolidou a rota `GET /api/v1/contas/{idContaCorrente}/saldo`, DTO, Problem Details, cálculo de créditos menos débitos, saldo zero, instante UTC round-trip, snapshot de leitura, adaptação do `REAL` legado para `decimal`, limites operacionais, Event IDs 5200–5203, arquitetura CQRS, matriz de testes e riscos residuais.
+
+Foi preservada a restrição de não implementar endpoint, query, handler, query store, configuração ou teste executável de saldo. O `TODO.md` passou a registrar D como concluída documentalmente e criou a Entrega E, ainda bloqueada até autorização expressa, com sequência proposta de núcleo/persistência, contrato HTTP e controles operacionais.
+
+O gate oficial excedeu o limite de 30 segundos da ferramenta quando executado como um único script, sem reportar falha. As sete etapas foram então executadas individualmente e passaram: restore bloqueado, auditoria direta e transitiva sem vulnerabilidades conhecidas, secret scanning sem achados, formatação/analisadores aprovados, build Release determinístico com zero avisos e zero erros, 80/80 testes e cobertura com nova execução em 80/80. A fixture manteve o SHA-256 `E355A3EDB7D73E7784A7467513248D530C27CC989C624A35D13A188B2AA8DD3C`.
+
+A Entrega D foi encerrada em commit documental isolado, sem alteração de código-fonte, configuração funcional, dependência, schema, fixture ou dado operacional. O workspace e o index foram confirmados limpos após o commit.
+
+---

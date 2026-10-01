@@ -9,6 +9,7 @@ Os documentos do projeto possuem responsabilidades distintas e não constituem b
 - `TODO.md`: fonte canônica do escopo, estado atual, pendências, dependências e próximos passos;
 - `CONVERSAS.md`: evidência cronológica das solicitações, decisões e ações, sem substituir o estado consolidado deste TODO;
 - `ESPECIFICACAO_MOVIMENTACAO.md`: contrato técnico especializado da movimentação; divergências de estado devem ser reconciliadas neste TODO;
+- `ESPECIFICACAO_SALDO.md`: contrato técnico planejado da consulta de saldo; não autoriza implementação sem entrega específica;
 - `DIRETRIZES_SEGURANCA.md`: guardrails permanentes aplicáveis a cada mudança, não um cronograma paralelo;
 - `RELATORIO_SEGURANCA.md`: fotografia histórica encerrada em 30 de setembro de 2026; estados antigos nele preservados não representam o andamento corrente;
 - `Questao5/Questão 5.docx`: enunciado original e fonte de requisitos, não documento de controle.
@@ -24,7 +25,8 @@ Pendências acionáveis descobertas em qualquer especificação, relatório, dir
 | C2 | Concluída | Implementar o endpoint e o contrato HTTP. |
 | C3 | Concluída | Implementar limites operacionais, logs e testes de abuso. |
 | C4 | Concluída | Limpeza do template, reconciliação documental, gate final e commit funcional consolidado. |
-| D | Próxima entrega planejável | Planejar a consulta de saldo, sem implementação antecipada. |
+| D | Concluída | Planejar a consulta de saldo, sem implementação antecipada. |
+| E | Bloqueada | Implementar a consulta de saldo somente após autorização específica. |
 
 ### Entrega C4 — limpeza, documentação, gate e commit funcional
 
@@ -46,19 +48,26 @@ Pendências acionáveis descobertas em qualquer especificação, relatório, dir
 
 ### Entrega D — planejamento da consulta de saldo
 
-- **Estado:** Próxima entrega planejável — iniciar somente após autorização específica
+- **Estado:** Concluída em 1º de outubro de 2026 — especificação registrada em `ESPECIFICACAO_SALDO.md`
 - **Escopo inicial:** extrair e consolidar requisitos; definir rota, DTOs, respostas HTTP, cálculo monetário, data/hora, segurança, logs, arquitetura e matriz de testes
 - **Limite:** a Entrega D é de planejamento; implementação da consulta de saldo exigirá entrega e autorização posteriores
 
 #### Critérios de aceite do planejamento
 
-- [ ] Validar os requisitos do enunciado e as decisões monetárias já registradas.
-- [ ] Definir contrato HTTP versionado e comportamento para conta inexistente ou inativa.
-- [ ] Definir cálculo determinístico de créditos menos débitos, incluindo saldo `0.00` sem movimentos.
-- [ ] Definir formato externo, UTC/fuso e serialização determinística da data e hora da consulta.
-- [ ] Mapear riscos, limites, logs sem dados excessivos e redução de enumeração.
-- [ ] Definir arquitetura e testes positivos, negativos, monetários, temporais, de abuso e regressão.
-- [ ] Registrar a especificação antes de qualquer implementação.
+- [x] Validar os requisitos do enunciado e as decisões monetárias já registradas.
+- [x] Definir contrato HTTP versionado e comportamento para conta inexistente ou inativa.
+- [x] Definir cálculo determinístico de créditos menos débitos, incluindo saldo `0.00` sem movimentos.
+- [x] Definir formato externo, UTC/fuso e serialização determinística da data e hora da consulta.
+- [x] Mapear riscos, limites, logs sem dados excessivos e redução de enumeração.
+- [x] Definir arquitetura e testes positivos, negativos, monetários, temporais, de abuso e regressão.
+- [x] Registrar a especificação antes de qualquer implementação.
+
+### Entrega E — implementação da consulta de saldo
+
+- **Estado:** Bloqueada — depende de autorização expressa após a revisão da Entrega D
+- **Especificação:** `ESPECIFICACAO_SALDO.md`
+- **Limite atual:** não criar endpoint, query, handler, query store, configuração ou teste executável de saldo sem nova autorização
+- **Sequência proposta:** E1 núcleo e persistência; E2 contrato HTTP; E3 limites, logs, inventário, gate e commit funcional
 
 ## Regra de priorização
 
@@ -290,12 +299,13 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-005 — Definir representação monetária determinística
 
-- **Estado:** Em andamento — contrato `decimal` aplicado em C1; mitigação completa e saldo permanecem pendentes
+- **Estado:** Em andamento — contrato `decimal` aplicado em C1 e estratégia do saldo definida na Entrega D; implementação, testes e migração permanecem pendentes
 - **Prioridade:** Alta
 - **Referenciais:** CWE-682 e CWE-1339; NIST SSDF PW.4 e PW.5
 - **Evidência:** a coluna `movimento.valor` está declarada como `REAL`, tipo de ponto flutuante binário inadequado para precisão financeira sem estratégia adicional.
 - **Decisão da Entrega B:** contratos e cálculos usarão `decimal`, entradas aceitarão no máximo duas casas sem arredondamento implícito e o limite por movimento será `9999999999.99`. O `REAL` será preservado temporariamente apenas por compatibilidade; a migração permanece fora de TODO-002.
 - **Evidência C1:** `CreateMovementCommand` e a requisição normalizada usam `decimal`; escala maior que 2, valor não positivo e valor acima do limite são rejeitados; a representação canônica usa cultura invariável e duas casas; somente o adaptador SQLite converte para `REAL`.
+- **Decisão da Entrega D:** a consulta lerá movimentos em snapshot consistente, converterá cada `REAL` no adaptador e acumulará em `decimal` verificado, sem `SUM(valor)` em ponto flutuante nem arredondamento silencioso. A limitação de precisão já perdida no armazenamento permanece risco residual.
 
 #### Critérios de aceite
 
@@ -477,18 +487,19 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-017 — Padronizar datas e horários
 
-- **Estado:** Em andamento — uso residual corrigido; contrato bancário ainda não existe
+- **Estado:** Em andamento — uso residual corrigido e contrato externo do saldo definido; implementação e testes temporais permanecem pendentes
 - **Prioridade:** Baixa
 - **Referenciais:** CWE-682; qualidade e rastreabilidade operacional
 - **Evidência de origem:** o endpoint de exemplo usava `DateTime.Now`; o contrato bancário ainda não define UTC, fuso ou formato.
 - **Evidência atual:** o uso residual foi substituído por `DateTime.UtcNow`; testes e novas persistências de teste usam `DateTimeOffset.UtcNow` e formato round-trip `O`.
 - **Decisão da Entrega B:** a movimentação obterá a data por relógio UTC injetável e persistirá `datamovimento` no formato legado `dd/MM/yyyy`, com cultura invariável. O formato externo e o fuso da futura consulta de saldo continuam pendentes.
 - **Evidência C1:** `MovementStore` usa `TimeProvider.GetUtcNow()` e cultura invariável; teste com relógio fixo comprova persistência determinística no formato legado.
+- **Decisão da Entrega D:** `dataHoraConsulta` será obtida por `TimeProvider.GetUtcNow()` após a leitura e serializada em UTC pelo formato round-trip `O`, com offset `+00:00` e cultura invariável.
 
 #### Critérios de aceite
 
 - [x] Datas internas existentes usam UTC ou `DateTimeOffset`.
-- [ ] Formato externo e fuso da consulta de saldo estão documentados.
+- [x] Formato externo e fuso da consulta de saldo estão documentados.
 - [ ] Persistência e serialização são determinísticas e independentes da cultura do servidor.
 - [ ] Existem testes para fuso e transição de data.
 
@@ -622,7 +633,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 5. Interromper a execução e aguardar os detalhes adicionais do usuário.
 6. Somente após uma nova autorização expressa, elaborar um plano específico para as pendências funcionais.
 
-Este procedimento foi cumprido. TODO-001 recebeu autorização própria e foi concluído em 1º de outubro de 2026. TODO-002 foi planejado na Entrega B, implementado nas entregas C1 a C3 e concluído em 1º de outubro de 2026. C4 é a próxima entrega do roadmap, e D permanece limitada ao planejamento da consulta de saldo.
+Este procedimento foi cumprido. TODO-001 recebeu autorização própria e foi concluído em 1º de outubro de 2026. TODO-002 foi planejado na Entrega B, implementado nas entregas C1 a C3 e concluído em 1º de outubro de 2026. C4 foi concluída e a Entrega D formalizou o planejamento da consulta de saldo. A Entrega E permanece bloqueada e depende de autorização expressa para qualquer implementação.
 
 Não existe, neste documento, autorização antecipada para implementar outras pendências funcionais.
 
@@ -657,3 +668,4 @@ Estes itens são controles contínuos e não devem ser marcados globalmente como
 - **1º de outubro de 2026:** Entrega C3 implementou timeout de 5 segundos, rate limits de 30 e 120 requisições por minuto por IP, concorrência máxima de 8 sem fila, respostas 429/504 correlacionadas e logs 5100–5105 sem dados bancários. A suíte atingiu 79 testes e TODO-002 foi concluído.
 - **1º de outubro de 2026:** pausa de organização concluída. `TODO.md` foi confirmado como fonte canônica de escopo e andamento; documentos especializados e históricos foram classificados sem criar backlog paralelo. O roadmap foi consolidado com C4 para limpeza, documentação, gate e commit funcional, seguida da Entrega D para planejar a consulta de saldo. Estados evidentemente desatualizados de segurança foram reconciliados com as evidências de C1 a C3.
 - **1º de outubro de 2026:** Entrega C4 removeu o endpoint e o modelo `WeatherForecast`, eliminou comentários residuais do template e adicionou regressão do inventário OpenAPI. A especificação foi reconciliada com o estado implementado. O gate completo passou com 80 testes, zero avisos, zero erros, sem vulnerabilidades conhecidas ou segredos detectados; a fixture manteve o SHA-256 esperado. SEC-018 foi concluído e D tornou-se a próxima entrega planejável.
+- **1º de outubro de 2026:** Entrega D consolidou em `ESPECIFICACAO_SALDO.md` os requisitos, contrato HTTP, cálculo monetário, tempo UTC, snapshot de leitura, limites, logs, arquitetura, testes e riscos residuais da consulta de saldo. O gate passou com 80 testes, zero avisos, zero erros, sem vulnerabilidades conhecidas ou segredos detectados; a fixture manteve o SHA-256 esperado. Nenhum código funcional foi implementado; a Entrega E permanece bloqueada até autorização específica.
