@@ -9,6 +9,7 @@ using Questao5.Application.Balances;
 using Questao5.Application.Movements;
 using Questao5.Infrastructure.Database.CommandStore;
 using Questao5.Infrastructure.Database.QueryStore;
+using Questao5.Infrastructure.Services.Balances;
 using Questao5.Infrastructure.Services.Correlation;
 using Questao5.Infrastructure.Services.Errors;
 using Questao5.Infrastructure.Services.Identifiers;
@@ -34,6 +35,18 @@ if (movementOptions.TimeoutSeconds <= 0 ||
     movementOptions.ConcurrencyPermitLimit <= 0)
 {
     throw new InvalidOperationException("Os limites operacionais de movimentação devem ser maiores que zero.");
+}
+
+var balanceOptions = builder.Configuration
+    .GetSection(BalanceOperationalOptions.SectionName)
+    .Get<BalanceOperationalOptions>() ?? new BalanceOperationalOptions();
+
+if (balanceOptions.TimeoutSeconds <= 0 ||
+    balanceOptions.EndpointPermitLimit <= 0 ||
+    balanceOptions.WindowSeconds <= 0 ||
+    balanceOptions.ConcurrencyPermitLimit <= 0)
+{
+    throw new InvalidOperationException("Os limites operacionais da consulta de saldo devem ser maiores que zero.");
 }
 
 var jwtOptions = builder.Configuration
@@ -78,8 +91,36 @@ builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddJwtAuthentication(jwtOptions);
 builder.Services.AddSingleton(movementOptions);
 builder.Services.AddSingleton<MovementLogger>();
+builder.Services.AddSingleton(balanceOptions);
+builder.Services.AddSingleton<BalanceLogger>();
 builder.Services.AddRequestTimeouts(options =>
 {
+    options.AddPolicy(BalancePolicyNames.RequestTimeout, new RequestTimeoutPolicy
+    {
+        Timeout = TimeSpan.FromSeconds(balanceOptions.TimeoutSeconds),
+        TimeoutStatusCode = StatusCodes.Status504GatewayTimeout,
+        WriteTimeoutResponse = async context =>
+        {
+            var balanceLogger = context.RequestServices.GetRequiredService<BalanceLogger>();
+            balanceLogger.LimitExceeded(context.TraceIdentifier, "BalanceTimeout");
+
+            var problemDetailsService = context.RequestServices.GetRequiredService<IProblemDetailsService>();
+            await problemDetailsService.WriteAsync(new ProblemDetailsContext
+            {
+                HttpContext = context,
+                ProblemDetails = new ProblemDetails
+                {
+                    Status = StatusCodes.Status504GatewayTimeout,
+                    Title = "A operação excedeu o tempo limite.",
+                    Detail = "Não foi possível concluir a consulta de saldo dentro do tempo permitido.",
+                    Extensions =
+                    {
+                        ["code"] = "REQUEST_TIMEOUT"
+                    }
+                }
+            }).ConfigureAwait(false);
+        }
+    });
     options.AddPolicy(MovementPolicyNames.RequestTimeout, new RequestTimeoutPolicy
     {
         Timeout = TimeSpan.FromSeconds(movementOptions.TimeoutSeconds),
@@ -144,18 +185,53 @@ builder.Services.AddRateLimiter(options =>
                     QueueLimit = 0
                 })
             : RateLimitPartition.GetNoLimiter("NonMovement"));
+    var balanceFrequencyLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        IsBalanceRequest(context)
+            ? RateLimitPartition.GetFixedWindowLimiter(
+                GetIdentityPartition(context),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = balanceOptions.EndpointPermitLimit,
+                    Window = TimeSpan.FromSeconds(balanceOptions.WindowSeconds),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0,
+                    AutoReplenishment = true
+                })
+            : RateLimitPartition.GetNoLimiter("NonBalance"));
+    var balanceConcurrencyLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        IsBalanceRequest(context)
+            ? RateLimitPartition.GetConcurrencyLimiter(
+                "Balance",
+                _ => new ConcurrencyLimiterOptions
+                {
+                    PermitLimit = balanceOptions.ConcurrencyPermitLimit,
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0
+                })
+            : RateLimitPartition.GetNoLimiter("NonBalance"));
 
     options.GlobalLimiter = PartitionedRateLimiter.CreateChained(
         globalLimiter,
         movementFrequencyLimiter,
-        movementConcurrencyLimiter);
+        movementConcurrencyLimiter,
+        balanceFrequencyLimiter,
+        balanceConcurrencyLimiter);
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.OnRejected = async (context, cancellationToken) =>
     {
         var httpContext = context.HttpContext;
-        var limitName = IsMovementRequest(httpContext) ? "Movement" : "Global";
-        var movementLogger = httpContext.RequestServices.GetRequiredService<MovementLogger>();
-        movementLogger.LimitExceeded(httpContext.TraceIdentifier, limitName);
+
+        if (IsBalanceRequest(httpContext))
+        {
+            var balanceLogger = httpContext.RequestServices.GetRequiredService<BalanceLogger>();
+            balanceLogger.LimitExceeded(httpContext.TraceIdentifier, "Balance");
+        }
+        else
+        {
+            var limitName = IsMovementRequest(httpContext) ? "Movement" : "Global";
+            var movementLogger = httpContext.RequestServices.GetRequiredService<MovementLogger>();
+            movementLogger.LimitExceeded(httpContext.TraceIdentifier, limitName);
+        }
 
         if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
         {
@@ -187,6 +263,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IMovementIdGenerator, GuidMovementIdGenerator>();
 builder.Services.AddSingleton<IMovementStore, MovementStore>();
 builder.Services.AddSingleton<IBalanceReconciler, BalanceReconciler>();
+builder.Services.AddSingleton<IBalanceQueryStore, BalanceQueryStore>();
 
 builder.Services.AddSingleton(new DatabaseConfig(builder.Configuration["DatabaseName"]));
 builder.Services.AddSingleton<ISqliteConnectionFactory, SqliteConnectionFactory>();
@@ -263,6 +340,16 @@ static string GetIdentityPartition(HttpContext context)
     return context.User.TryGetAccountHolderId(out var accountHolderId)
         ? $"sub:{accountHolderId}"
         : $"ip:{GetClientPartition(context)}";
+}
+
+static bool IsBalanceRequest(HttpContext context)
+{
+    var path = context.Request.Path.Value;
+
+    return HttpMethods.IsGet(context.Request.Method) &&
+        path is not null &&
+        path.StartsWith("/api/v1/contas/", StringComparison.OrdinalIgnoreCase) &&
+        path.EndsWith("/saldo", StringComparison.OrdinalIgnoreCase);
 }
 
 static bool IsMovementRequest(HttpContext context)

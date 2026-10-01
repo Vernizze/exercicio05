@@ -4,7 +4,7 @@
 
 Este documento consolida a Entrega F0, realizada em 1º de outubro de 2026, e define o contrato e o desenho técnico da autenticação por JWT e da autorização por titular da conta. A entrega é exclusivamente de planejamento: nenhum pacote, middleware, tabela, migração, configuração ou teste executável de autenticação foi implementado nela.
 
-Estado de implementação: a Entrega F1, concluída em 1º de outubro de 2026, implementou a autenticação descrita nas seções 5, 6.3 (resposta 401), 9 (evento 5300) e 11 (testes de autenticação). A Entrega F2, concluída na mesma data, implementou o vínculo conta–correntista e a migração (seção 4), a autorização por titular na movimentação (seção 6), a idempotência `v2` (seção 7), o limite específico por correntista (seção 8) e o evento 5301 (seção 9). A autorização por titular na consulta de saldo depende da Entrega E, e o empacotamento, da Entrega G.
+Estado de implementação: a Entrega F1, concluída em 1º de outubro de 2026, implementou a autenticação descrita nas seções 5, 6.3 (resposta 401), 9 (evento 5300) e 11 (testes de autenticação). A Entrega F2, concluída na mesma data, implementou o vínculo conta–correntista e a migração (seção 4), a autorização por titular na movimentação (seção 6), a idempotência `v2` (seção 7), o limite específico por correntista (seção 8) e o evento 5301 (seção 9). A Entrega E aplicou a mesma regra de titularidade à consulta de saldo e passou a contar o limite específico do saldo por correntista. Resta o empacotamento da seção 10, previsto para a Entrega G.
 
 A decisão substitui a exceção registrada anteriormente em `DIRETRIZES_SEGURANCA.md`, segundo a qual o exercício permaneceria anônimo. SEC-001 e SEC-002 deixam de ser riscos aceitos e passam a ser itens em andamento.
 
@@ -281,7 +281,7 @@ Os testes automatizados não dependem do contêiner do emissor: usam uma chave d
 | F0 (concluída) | Revisão documental: esta especificação, diretrizes, especificações de movimentação e saldo e `TODO.md`. |
 | F1 (concluída) | Autenticação JWT na API: pacote, validação, política padrão, resposta 401, evento 5300 e testes com chave local. |
 | F2 (concluída) | Schema versão 2 (`titularidade_conta` e `saldo_conta`), manutenção da projeção de saldo, autorização por titular na movimentação, idempotência `v2`, limites por correntista e evento 5301. |
-| E2–E4 | Consulta de saldo já com autorização por titular, conforme `ESPECIFICACAO_SALDO.md`. |
+| E2–E4 (concluída) | Consulta de saldo já com autorização por titular, conforme `ESPECIFICACAO_SALDO.md`. |
 | G | Empacotamento com Dockerfile e Docker Compose, incluindo o emissor de teste e as instruções para os avaliadores. |
 
 Cada entrega termina com o gate completo e um commit isolado. Mudanças futuras de claim, emissor, regra de titularidade ou resposta de erro devem atualizar este documento antes do código.

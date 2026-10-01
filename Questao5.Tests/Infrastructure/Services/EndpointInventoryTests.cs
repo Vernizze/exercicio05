@@ -10,7 +10,7 @@ namespace Questao5.Tests.Infrastructure.Services;
 public sealed class EndpointInventoryTests
 {
     [Fact]
-    public async Task Swagger_exposes_only_the_movement_endpoint()
+    public async Task Swagger_exposes_only_the_movement_and_balance_endpoints()
     {
         using var factory = new SwaggerWebApplicationFactory();
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
@@ -26,12 +26,50 @@ public sealed class EndpointInventoryTests
 
         using var document = JsonDocument.Parse(
             await response.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken));
-        var paths = document.RootElement.GetProperty("paths");
-        var path = Assert.Single(paths.EnumerateObject());
-        var operation = Assert.Single(path.Value.EnumerateObject());
+        var operations = document.RootElement.GetProperty("paths")
+            .EnumerateObject()
+            .SelectMany(path => path.Value.EnumerateObject()
+                .Select(operation => $"{operation.Name.ToUpperInvariant()} {path.Name}"))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
 
-        Assert.Equal("/api/v1/movimentos", path.Name);
-        Assert.Equal("post", operation.Name);
+        Assert.Equal(
+            ["GET /api/v1/contas/{idContaCorrente}/saldo", "POST /api/v1/movimentos"],
+            operations);
+    }
+
+    [Fact]
+    public async Task Swagger_documents_the_balance_contract_and_its_authentication_failure()
+    {
+        using var factory = new SwaggerWebApplicationFactory();
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        using var response = await client.GetAsync(
+            "/swagger/v1/swagger.json",
+            TestContext.Current.CancellationToken);
+        using var document = JsonDocument.Parse(
+            await response.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken));
+
+        var responses = document.RootElement
+            .GetProperty("paths")
+            .GetProperty("/api/v1/contas/{idContaCorrente}/saldo")
+            .GetProperty("get")
+            .GetProperty("responses");
+        var schema = document.RootElement
+            .GetProperty("components")
+            .GetProperty("schemas")
+            .GetProperty("GetBalanceHttpResponse")
+            .GetProperty("properties");
+
+        Assert.True(responses.TryGetProperty("200", out _));
+        Assert.True(responses.TryGetProperty("400", out _));
+        Assert.True(responses.TryGetProperty("401", out _));
+        Assert.Equal(
+            ["dataHoraConsulta", "nomeTitular", "numeroContaCorrente", "saldoAtual"],
+            schema.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal).ToArray());
     }
 
     [Fact]

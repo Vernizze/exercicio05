@@ -1,4 +1,4 @@
-# Serviço de consulta de saldo — especificação planejada
+# Serviço de consulta de saldo — especificação e estado implementado
 
 ## 1. Escopo e estado
 
@@ -8,7 +8,7 @@ Uma revisão documental posterior, também sem implementação funcional, substi
 
 Uma segunda revisão documental, a Entrega F0, também de 1º de outubro de 2026, revogou a exceção de autenticação: a consulta passa a exigir JWT e a conta só pode ser consultada por seu titular. As regras de identidade, titularidade e token estão em `ESPECIFICACAO_AUTENTICACAO.md`; este documento registra apenas seus efeitos sobre a consulta de saldo.
 
-Estado de implementação: a Entrega F2, concluída em 1º de outubro de 2026, implementou a parte de escrita desta especificação — a tabela `saldo_conta`, a migração com preenchimento inicial, a atualização transacional pela movimentação e a reconciliação (seções 4.3 a 4.7). O endpoint, a query, o handler, o store de leitura, os limites e os logs da consulta permanecem planejados para a Entrega E.
+Estado de implementação: a Entrega F2, concluída em 1º de outubro de 2026, implementou a parte de escrita desta especificação — a tabela `saldo_conta`, a migração com preenchimento inicial, a atualização transacional pela movimentação e a reconciliação (seções 4.3 a 4.7). A Entrega E, concluída na mesma data, implementou a consulta: endpoint, query, handler, store de leitura, limites operacionais, logs 5200–5203 e os testes da seção 9. Com isso, toda esta especificação está implementada; os pontos em que a implementação detalhou ou restringiu o planejado estão indicados nas próprias seções. Os parágrafos anteriores desta seção, que descrevem a Entrega D como exclusivamente de planejamento, são registro histórico.
 
 Fazem parte desta especificação:
 
@@ -85,7 +85,7 @@ Decisões:
 - a identificação da conta é um parâmetro de rota, sem body;
 - query string alternativa e consulta por número da conta não serão aceitas;
 - a rota não diferencia maiúsculas e minúsculas ao localizar o identificador persistido, preservando o comportamento da movimentação;
-- respostas bem-sucedidas não devem ser armazenadas por caches compartilhados: a implementação deverá enviar `Cache-Control: no-store`.
+- respostas bem-sucedidas não devem ser armazenadas por caches compartilhados: a resposta 200 envia `Cache-Control: no-store`. As respostas de erro não carregam dados da conta e não recebem esse header.
 
 ### 3.2 Parâmetro de rota
 
@@ -122,7 +122,7 @@ X-Correlation-ID: 2dfe616b5f034b169b3e81745e189f68
 | `dataHoraConsulta` | texto | instante UTC no formato round-trip `O`, com offset `+00:00` e cultura invariável |
 | `saldoAtual` | número decimal | créditos menos débitos, com escala lógica de duas casas |
 
-O modelo de aplicação deve manter `saldoAtual` como `decimal`. O JSON deve usar número, não texto. O exemplo `0.00` expressa a escala monetária, mas consumidores não podem depender da preservação lexical de zeros finais em um número JSON.
+O modelo de aplicação deve manter `saldoAtual` como `decimal`. O JSON deve usar número, não texto. O exemplo `0.00` expressa a escala monetária, mas consumidores não podem depender da preservação lexical de zeros finais em um número JSON. Na implementação, o `decimal` é construído a partir dos centavos com escala 2, de modo que o serializador emite `0.00`, `10.50` e `115.25`; isso é uma cortesia de apresentação, não parte do contrato.
 
 `nomeTitular` é o nome persistido em `contacorrente.nome`. A identidade de quem consulta vem do token e é conferida contra `titularidade_conta`; o nome não participa da autorização.
 
@@ -273,9 +273,9 @@ A escrita que mantém a projeção usa a transação imediata já existente; a c
 
 ## 6. Limites operacionais
 
-A consulta terá configuração própria, sem reutilizar semanticamente `MovementOperationalOptions`:
+A consulta tem configuração própria, na seção `Balance` (`BalanceOperationalOptions`), sem reutilizar semanticamente `MovementOperationalOptions`. O limite global continua configurado em `Movement:GlobalPermitLimit`. Os limites específicos de saldo e de movimentação são independentes: esgotar um não afeta o outro.
 
-| Controle | Valor inicial planejado |
+| Controle | Valor inicial |
 | --- | --- |
 | timeout | 5 segundos |
 | frequência específica | 30 requisições por minuto por correntista autenticado |
@@ -288,7 +288,7 @@ O limite global por IP é aplicado antes da autenticação. O limite específico
 
 ## 7. Logs estruturados
 
-Eventos planejados para o componente `Balance`:
+Eventos implementados para o componente `Balance` (`BalanceLogger`). No evento 5203, `LimitName` é `Balance` para frequência ou concorrência excedida e `BalanceTimeout` para timeout:
 
 | Event ID | Nível | Evento | Campos permitidos |
 | --- | --- | --- | --- |
@@ -312,11 +312,11 @@ Não serão registrados:
 
 Campos controlados pelo cliente serão normalizados ou derivados antes do log. O timestamp será fornecido pelo pipeline de logging.
 
-## 8. Arquitetura planejada
+## 8. Arquitetura implementada
 
-A implementação deverá usar apenas as dependências existentes: ASP.NET Core, MediatR, Dapper e Microsoft.Data.Sqlite.
+A implementação usa apenas as dependências já existentes: ASP.NET Core, MediatR, Dapper e Microsoft.Data.Sqlite. O pacote de autenticação foi acrescentado pela Entrega F1.
 
-Fluxo planejado:
+Fluxo implementado:
 
 ```text
 BalanceController
@@ -337,7 +337,11 @@ Responsabilidades:
 - `GetBalanceHttpResponse`: contrato público fechado;
 - `BalanceLogger`: Event IDs 5200–5203 e fingerprint seguro;
 - `TimeProvider`: relógio UTC injetável para resposta e testes determinísticos;
-- `BusinessRuleException`: reutilização dos códigos `INVALID_ACCOUNT` e `INACTIVE_ACCOUNT`.
+- `BusinessRuleException`: reutilização dos códigos `INVALID_ACCOUNT` e `INACTIVE_ACCOUNT`, por meio de `AccountRuleViolations`, compartilhado com a movimentação para que as mensagens sejam idênticas;
+- `AccountIdentifierAttribute`: validação estrutural do parâmetro de rota, respondida pelo mesmo erro de validação por campo usado no restante da API;
+- `BalanceProjection`: conversão de centavos para `decimal` com escala 2, compartilhada com a escrita.
+
+O handler obtém o instante da consulta do `TimeProvider` somente depois de o store concluir a leitura. O store lê conta, titularidade e saldo em uma única instrução, dentro de uma transação de leitura não imediata; saldo ausente ou não inteiro em `saldo_conta` é tratado como falha interna, nunca como zero ou valor arredondado.
 
 No lado de escrita, `IMovementStore`/`MovementStore` passam a manter a projeção: dentro da transação imediata existente, após inserir o movimento e antes de confirmar, atualizam `saldo_conta` com o valor em centavos e o incremento de `versao`. A idempotência continua sendo verificada antes de qualquer escrita.
 
@@ -345,7 +349,9 @@ O schema evolui por migração versionada, elevando `PRAGMA user_version` para `
 
 Pastas e namespaces devem seguir a separação atual entre `Application`, `Infrastructure/Database/CommandStore`, `Infrastructure/Database/QueryStore` e `Infrastructure/Services`.
 
-## 9. Matriz de testes planejada
+## 9. Matriz de testes implementada
+
+Os itens abaixo estão cobertos por testes automatizados, com as seguintes observações: os valores persistidos fora do contrato são exercitados na migração e na leitura da projeção (o `CHECK` de `tipomovimento` e o `NOT NULL` de `valor` impedem persistir tipo inválido ou valor não finito pelo próprio banco); a independência de fuso é verificada pela conversão explícita de um instante com offset para UTC, pois os testes não alteram o fuso do processo; e a consistência sob concorrência é verificada com leituras e movimentações simultâneas em pequena quantidade, não por teste de carga. O handler possui testes unitários com o store e o relógio substituídos por NSubstitute.
 
 ### Contrato HTTP e inventário
 
@@ -434,7 +440,11 @@ Pastas e namespaces devem seguir a separação atual entre `Application`, `Infra
 9. **Titularidades fabricadas:** os identificadores de correntista não existem nos dados do proponente; são dados de demonstração gravados pelo seed deste projeto.
 10. **Sem cache e sem alta disponibilidade:** a projeção melhora desempenho e previsibilidade de latência, mas aplicação e SQLite continuam sendo pontos únicos de falha. Esta entrega não fornece alta disponibilidade.
 
-## 11. Critérios para a futura implementação
+## 11. Critérios de implementação — registro histórico
+
+Os critérios abaixo foram definidos antes da implementação e foram cumpridos pelas entregas F1, F2 e E, concluídas em 1º de outubro de 2026. A Entrega E reuniu em um único commit as etapas de núcleo de consulta, contrato HTTP e limites e logs, em vez de um commit por etapa. Mudanças futuras de rota, DTO, status HTTP, cálculo ou limites deverão atualizar este documento antes do código.
+
+Texto original dos critérios:
 
 A implementação somente poderá começar após autorização expressa e deverá ser dividida em mudanças pequenas e revisáveis. Antes do commit funcional será obrigatório:
 

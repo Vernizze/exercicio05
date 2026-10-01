@@ -30,8 +30,8 @@ Pendências acionáveis descobertas em qualquer especificação, relatório, dir
 | F0 | Concluída | Revisão documental: autenticação JWT, titularidade de conta e emissor do desafio. |
 | F1 | Concluída | Autenticação JWT na API. |
 | F2 | Concluída | Schema versão 2, titularidade, projeção de saldo e autorização na movimentação. |
-| E | Autorizada — próxima | Implementar a consulta de saldo (E2 a E4), já com autorização por titular. |
-| G | Autorizada — após E | Empacotamento com Dockerfile e Docker Compose, incluindo o emissor de teste. |
+| E | Concluída | Implementar a consulta de saldo (E2 a E4), já com autorização por titular. |
+| G | Autorizada — próxima | Empacotamento com Dockerfile e Docker Compose, incluindo o emissor de teste. |
 
 A sequência F0, F1, F2, E e G foi autorizada pelo usuário em 1º de outubro de 2026 (Interação 033 de `CONVERSAS.md`). Cada entrega termina com o gate completo e um commit isolado.
 
@@ -133,10 +133,25 @@ A sequência F0, F1, F2, E e G foi autorizada pelo usuário em 1º de outubro de
 
 ### Entrega E — implementação da consulta de saldo
 
-- **Estado:** Autorizada — depende de F2
+- **Estado:** Concluída em 1º de outubro de 2026
 - **Especificação:** `ESPECIFICACAO_SALDO.md`
-- **Sequência:** E1 foi absorvida e concluída pela F2; E2 núcleo de consulta; E3 contrato HTTP; E4 limites, logs, inventário, gate e commit funcional
+- **Sequência:** E1 foi absorvida e concluída pela F2; E2 núcleo de consulta, E3 contrato HTTP e E4 limites, logs e inventário foram implementadas em sequência e encerradas em um único gate e commit funcional
 - **Decisão arquitetural:** CQRS local com projeção persistida (`saldo_conta`), sem cache em memória, mensageria ou consistência eventual; consulta restrita ao titular da conta
+- **Evidência:** `GET /api/v1/contas/{idContaCorrente}/saldo` implementado por `BalanceController`, `GetBalanceQuery`, `GetBalanceQueryHandler` e `BalanceQueryStore`; leitura de conta, titularidade e saldo em um único snapshot; resposta com número, titular, instante UTC em formato round-trip e saldo decimal, com `Cache-Control: no-store`; limites próprios na seção `Balance`; `BalanceLogger` com os eventos 5200–5203. A suíte passou de 144 para 211 testes.
+
+#### Critérios de aceite
+
+- [x] HTTP 200 com número da conta, nome do titular, data e hora da consulta e saldo atual; saldo `0.00` sem movimentos.
+- [x] Saldo igual a créditos menos débitos, lido da projeção em centavos inteiros, sem ponto flutuante.
+- [x] Conta não cadastrada retorna `INVALID_ACCOUNT` e conta própria inativa retorna `INACTIVE_ACCOUNT`, em HTTP 400 com mensagem e tipo.
+- [x] Token ausente ou inválido retorna 401; conta de outro correntista retorna `INVALID_ACCOUNT` idêntico ao de conta não cadastrada, com evento 5301.
+- [x] Identificador estruturalmente inválido retorna erro de validação por campo; segmento ausente não corresponde à rota.
+- [x] Timeout, frequência por correntista e concorrência sem fila retornam 504 e 429 correlacionados; os limites do saldo são independentes dos da movimentação.
+- [x] Eventos 5200–5203 emitidos sem conta, titular, saldo ou valores em claro.
+- [x] O inventário OpenAPI contém somente `POST /api/v1/movimentos` e `GET /api/v1/contas/{idContaCorrente}/saldo`.
+- [x] A leitura não altera dados e observa um saldo confirmado mesmo com movimentações concorrentes.
+- [x] Handler coberto por testes unitários com NSubstitute; store e endpoint cobertos por testes com SQLite real.
+- [x] Gate completo aprovado e fixture com o SHA-256 esperado.
 
 ### Entrega G — empacotamento com Docker Compose
 
@@ -179,9 +194,10 @@ Achados do levantamento de fechamento de escopo (Interação 029 de `CONVERSAS.m
 
 - **Estado:** Pendente — aguarda decisão
 - **Prioridade:** Média — ponto extra do enunciado
-- **Evidência:** o pacote NSubstitute está referenciado em `Questao5.Tests`, mas nenhum teste o utiliza; os handlers não possuem teste unitário com store mockado.
+- **Evidência:** o pacote NSubstitute está referenciado em `Questao5.Tests`, mas nenhum teste o utilizava; os handlers não possuíam teste unitário com store mockado.
+- **Avanço na Entrega E:** `GetBalanceQueryHandler` recebeu testes unitários com o store e o relógio substituídos por NSubstitute. `CreateMovementCommandHandler` continua coberto apenas por testes com SQLite real e HTTP.
 
-- [ ] Handlers cobertos por testes unitários com dependências mockadas.
+- [ ] Handlers cobertos por testes unitários com dependências mockadas; atendido para o handler de saldo, pendente para o de movimentação.
 
 #### TODO-006 — README e forma de entrega
 
@@ -360,7 +376,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-001 — Definir e implementar autenticação da API
 
-- **Estado:** Em andamento — reaberto em 1º de outubro de 2026; planejado na Entrega F0, implementação na Entrega F1
+- **Estado:** Implementado no escopo do exercício em 1º de outubro de 2026 — Entrega F1; a substituição do emissor de teste antes de implantação real permanece em aberto
 - **Prioridade:** Alta
 - **Referenciais:** OWASP API2 e API5; CWE-306 e CWE-862; NIST SSDF PW.4
 - **Evidência:** `Program.cs` usa autorização, mas não registra autenticação, não executa `UseAuthentication` e os endpoints atuais não exigem identidade.
@@ -378,7 +394,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-002 — Implementar autorização em nível de conta e função
 
-- **Estado:** Em andamento — reaberto em 1º de outubro de 2026; planejado na Entrega F0, implementação nas Entregas F2 (movimentação) e E (saldo)
+- **Estado:** Implementado no escopo do exercício em 1º de outubro de 2026 — Entregas F2 (movimentação) e E (saldo); a reavaliação antes de implantação real permanece em aberto
 - **Prioridade:** Alta
 - **Referenciais:** OWASP API1, API3 e API5; CWE-284, CWE-639, CWE-862 e CWE-863
 - **Evidência:** não existe vínculo entre identidade, conta corrente e permissão para consultar saldo ou realizar movimentação.
@@ -391,8 +407,8 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - [x] O DTO da movimentação expõe apenas propriedades necessárias e impede overposting.
 - [x] O vínculo conta–correntista e a regra de titularidade estão especificados.
 - [x] A movimentação só é aceita para conta do correntista autenticado.
-- [ ] A consulta de saldo só é aceita para conta do correntista autenticado.
-- [ ] Conta de outro correntista é indistinguível de conta não cadastrada na resposta, reduzindo enumeração; atendido na movimentação pela Entrega F2, pendente na consulta de saldo.
+- [x] A consulta de saldo só é aceita para conta do correntista autenticado.
+- [x] Conta de outro correntista é indistinguível de conta não cadastrada na resposta, reduzindo enumeração; atendido na movimentação pela Entrega F2 e na consulta de saldo pela Entrega E.
 - [x] A idempotência não permite que um correntista recupere o resultado de outro.
 - [ ] Reavaliar este item antes de qualquer implantação real.
 
@@ -429,7 +445,8 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-005 — Definir representação monetária determinística
 
-- **Estado:** Em andamento — contrato `decimal` aplicado em C1, estratégia do saldo definida na Entrega D e projeção persistida definida na revisão documental; implementação e testes permanecem pendentes
+- **Estado:** Concluído no escopo do exercício em 1º de outubro de 2026 — contrato `decimal` (C1), projeção em centavos inteiros (F2) e consulta de saldo (E); a migração de `movimento.valor` de `REAL` para centavos permanece fora do escopo, como risco residual
+- **Evidência F2 e E:** `saldo_conta` guarda centavos inteiros atualizados com aritmética verificada; a leitura constrói o `decimal` diretamente dos centavos; testes cobrem `0.01`, `0.10`, `9999999999.99`, saldo negativo, cancelamento exato de crédito e débito, 200 créditos de `0,10` somando exatamente `20,00` e rejeição de valores persistidos fora do contrato.
 - **Prioridade:** Alta
 - **Referenciais:** CWE-682 e CWE-1339; NIST SSDF PW.4 e PW.5
 - **Evidência:** a coluna `movimento.valor` está declarada como `REAL`, tipo de ponto flutuante binário inadequado para precisão financeira sem estratégia adicional.
@@ -443,8 +460,8 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - [x] A unidade de armazenamento, escala e regra de arredondamento estão documentadas, incluindo a limitação do `REAL` legado.
 - [x] A API de movimentação usa `decimal` nos contratos e cálculos monetários.
 - [x] O uso de centavos em `INTEGER` foi avaliado; decidiu-se por mitigação temporária compatível com o esquema legado e migração futura separada.
-- [ ] Saldo e movimentações mantêm precisão em casos limítrofes e repetidos.
-- [ ] Existem testes para centavos, arredondamento, limites e soma de muitos movimentos.
+- [x] Saldo e movimentações mantêm precisão em casos limítrofes e repetidos.
+- [x] Existem testes para centavos, limites e soma de muitos movimentos; não há arredondamento a testar, pois valores com mais de duas casas são rejeitados na entrada e na leitura do legado.
 - [x] A projeção `saldo_conta` mantém o saldo em centavos inteiros e reconcilia com os movimentos.
 
 ### SEC-006 — Habilitar e testar integridade referencial SQLite
@@ -589,7 +606,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-015 — Implementar logs estruturados de segurança
 
-- **Estado:** Em andamento — eventos da movimentação implementados e testados; cobertura global e operação dependem das próximas entregas e do ambiente
+- **Estado:** Em andamento — eventos de movimentação, autenticação, titularidade e saldo implementados e testados; eventos de bootstrap e a associação a Detection Strategies dependem de decisão e do ambiente
 - **Prioridade:** Média
 - **Referenciais:** MITRE ATT&CK v19.2; NIST SSDF RV.1; CWE-117
 - **Evidência de origem:** o logger injetado não era utilizado e não havia eventos explícitos para bootstrap, validação, autenticação, autorização, abuso ou idempotência.
@@ -597,11 +614,12 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - **Evidência C3:** `MovementLogger` implementa e testa os Event IDs 5100 a 5105, fingerprint truncado da chave, campos estruturados e ausência de conta, valor, payload, chave integral, SQL, caminho do banco e mensagem bruta de exceção.
 - **Evidência F1:** `SecurityLogger` implementa e testa o evento 5300 de falha de autenticação, com motivo em categoria fechada e sem token, correntista ou mensagem da biblioteca de validação.
 - **Evidência F2:** `SecurityLogger` implementa e testa o evento 5301 de acesso negado por titularidade, com fingerprints do correntista e da conta e sem os identificadores em claro.
+- **Evidência E:** `BalanceLogger` implementa e testa os eventos 5200 a 5203 da consulta de saldo, com fingerprint da conta e sem conta, titular, saldo ou mensagem bruta de exceção.
 
 #### Critérios de aceite
 
 - [x] Os eventos da movimentação possuem IDs estáveis, nível, componente, resultado e campos estruturados; timestamp é fornecido pelo pipeline de logging.
-- [ ] São registrados bootstrap, falhas de validação, autenticação, autorização, rate limiting, idempotência, rollback e exceções.
+- [ ] São registrados bootstrap, falhas de validação, autenticação, autorização, rate limiting, idempotência, rollback e exceções; autenticação (5300), autorização (5301), rate limiting, idempotência, rollback e exceções estão implementados, e faltam eventos próprios para bootstrap e para falhas de validação estrutural.
 - [x] Os campos controlados usados nos eventos da movimentação são validados, normalizados ou derivados, sem interpolação livre suscetível a log forging.
 - [x] Os testes da movimentação confirmam ausência de senhas, tokens, connection strings, payloads bancários completos e demais dados proibidos.
 - [ ] Eventos são associados a Detection Strategies/Analytics aplicáveis e testados.
@@ -623,7 +641,8 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-017 — Padronizar datas e horários
 
-- **Estado:** Em andamento — uso residual corrigido e contrato externo do saldo definido; implementação e testes temporais permanecem pendentes
+- **Estado:** Concluído em 1º de outubro de 2026 — Entrega E
+- **Evidência E:** `GetBalanceQueryHandler` obtém o instante de `TimeProvider.GetUtcNow()` depois da leitura, e `GetBalanceHttpResponse` o converte para UTC e formata com `"O"` e cultura invariável. Testes cobrem relógio fixo, três culturas de processo, conversão de instante com offset local atravessando a virada de ano e a ordem entre leitura e obtenção do instante.
 - **Prioridade:** Baixa
 - **Referenciais:** CWE-682; qualidade e rastreabilidade operacional
 - **Evidência de origem:** o endpoint de exemplo usava `DateTime.Now`; o contrato bancário ainda não define UTC, fuso ou formato.
@@ -636,8 +655,8 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 - [x] Datas internas existentes usam UTC ou `DateTimeOffset`.
 - [x] Formato externo e fuso da consulta de saldo estão documentados.
-- [ ] Persistência e serialização são determinísticas e independentes da cultura do servidor.
-- [ ] Existem testes para fuso e transição de data.
+- [x] Persistência e serialização são determinísticas e independentes da cultura do servidor.
+- [x] Existem testes para fuso e transição de data; o fuso é exercitado por conversão explícita de offset, sem alterar o fuso do processo de teste.
 
 ### SEC-018 — Remover endpoint residual de exemplo
 
@@ -666,6 +685,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - **Evidência C4:** a suíte passou a ter 80 testes com uma regressão que valida o documento OpenAPI e exige inventário restrito a `POST /api/v1/movimentos`.
 - **Evidência F1:** a suíte passou a ter 106 testes. Foram acrescentados os casos de autenticação (token ausente, expirado, ainda não válido, assinado por outra chave, emissor, audiência e algoritmo inválidos, sem assinatura, malformado, sem `sub` UUID e emissor indisponível), a falha de inicialização por configuração `Jwt` inválida, o esquema Bearer no OpenAPI e a regressão de isolamento do banco de testes. Os testes HTTP existentes passaram a enviar token assinado por chave gerada no próprio teste.
 - **Evidência F2:** a suíte passou a ter 144 testes. Foram acrescentados os casos de migração (seed de titularidades, preenchimento da projeção a partir de banco na versão 1, migração de cópia da fixture, preservação em execuções repetidas, rejeição de tabelas incompatíveis, de valores persistidos fora do contrato e de projeção divergente), de titularidade no store e no HTTP (conta alheia, conta alheia inativa, conta sem titular, corpo idêntico ao de conta inexistente, evento 5301), de idempotência entre correntistas e com registro `v1`, de projeção (centavos, versão, replay, rollback, ausência da linha, concorrência sem perda de atualização), de reconciliação e de limite por correntista.
+- **Evidência E:** a suíte passou a ter 211 testes. Foram acrescentados os testes unitários do handler de saldo com NSubstitute, os testes do store de leitura com SQLite real, os testes HTTP da consulta (contrato, titularidade, validação, limites, timeout, logs, concorrência com movimentações e ausência de efeito colateral), os testes de formatação do instante e de fingerprint e a atualização do inventário OpenAPI para os dois endpoints.
 
 #### Critérios de aceite
 
@@ -811,3 +831,4 @@ Estes itens são controles contínuos e não devem ser marcados globalmente como
 - **1º de outubro de 2026:** levantamento de fechamento de escopo registrou TODO-003 a TODO-006, ainda sem autorização de execução. A Entrega F0 revogou a exceção de autenticação, reabriu SEC-001 e SEC-002 e consolidou em `ESPECIFICACAO_AUTENTICACAO.md` a autenticação JWT, o identificador do correntista, a tabela `titularidade_conta`, a regra de titularidade para movimentação e saldo, a idempotência `v2` e o emissor `mock-oauth2-server` em Docker Compose. As especificações de movimentação e saldo e as diretrizes foram atualizadas; a tabela de erros da movimentação passou a listar 413, 415 e 504, e o estado de SEC-007 foi corrigido. O usuário autorizou a sequência F0, F1, F2, E e G; a etapa E1 foi absorvida pela F2. Nenhum código, schema, fixture ou dado operacional foi alterado na F0.
 - **1º de outubro de 2026:** Entrega F1 implementou a autenticação JWT: pacote `Microsoft.AspNetCore.Authentication.JwtBearer 10.0.12`, validação de assinatura, algoritmo, emissor, audiência, validade e `sub` UUID, política padrão de usuário autenticado, resposta 401 `UNAUTHENTICATED`, evento 5300 e esquema Bearer no OpenAPI. Foi corrigido um defeito preexistente pelo qual os testes HTTP gravavam em um banco compartilhado na pasta de saída do projeto de testes, e não no banco temporário isolado. A suíte passou de 80 para 106 testes e o gate completo foi aprovado.
 - **1º de outubro de 2026:** Entrega F2 migrou o schema para a versão 2, com `titularidade_conta` e `saldo_conta`, seed das seis titularidades e preenchimento da projeção. A movimentação passou a exigir que a conta pertença ao correntista do token, a atualizar o saldo consolidado na mesma transação, a usar idempotência `v2` amarrada ao correntista e a contar o limite específico por correntista; a negativa por titularidade responde `INVALID_ACCOUNT` e é registrada no evento 5301. Foi criada a reconciliação sob demanda (`--reconciliar-saldos`). A etapa E1 foi concluída dentro desta entrega. A suíte passou de 106 para 144 testes e o gate completo foi aprovado; a fixture manteve o SHA-256 esperado.
+- **1º de outubro de 2026:** Entrega E implementou a consulta de saldo `GET /api/v1/contas/{idContaCorrente}/saldo`, restrita ao titular da conta, lendo o saldo consolidado em centavos de `saldo_conta` em um único snapshot. A resposta traz número da conta, nome do titular, instante UTC em formato round-trip e saldo decimal, com `Cache-Control: no-store`; os erros seguem o contrato da movimentação. A consulta recebeu limites próprios por correntista, timeout e os eventos 5200–5203. O handler foi coberto por testes unitários com NSubstitute. SEC-002, SEC-005 e SEC-017 tiveram os critérios dependentes do saldo atendidos. A suíte passou de 144 para 211 testes e o gate completo foi aprovado; a fixture manteve o SHA-256 esperado. TODO-003, TODO-004 e TODO-006 permanecem pendentes de decisão.

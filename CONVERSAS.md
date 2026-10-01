@@ -881,4 +881,22 @@ O gate completo foi executado ao final e passou: restore bloqueado, auditoria di
 
 Não foram criados endpoint, query ou handler de saldo. A Entrega F2 foi encerrada em commit funcional isolado.
 
+#### Entrega E — consulta de saldo
+
+A entrega partiu do commit `4b19ac8`, no branch `20260930`, com workspace limpo. As etapas E2 (núcleo de consulta), E3 (contrato HTTP) e E4 (limites, logs e inventário) foram implementadas em sequência e encerradas em um único gate e commit, em vez de um commit por etapa; a E1 já havia sido concluída na F2.
+
+**Núcleo.** Foram criados `GetBalanceQuery`, `GetBalanceResponse`, `GetBalanceQueryHandler`, `IBalanceQueryStore` e `BalanceQueryStore`, ocupando o lado de consulta do CQRS que a estrutura recebida já reservava. O store lê conta, titularidade e saldo consolidado em uma única instrução, dentro de uma transação de leitura não imediata, e valida, nesta ordem, existência da conta, titularidade e situação ativa. O saldo vem de `saldo_conta` em centavos inteiros e é convertido para `decimal` com escala 2, sem ponto flutuante e sem percorrer os movimentos. Saldo ausente ou não inteiro é tratado como falha interna, nunca como zero. O handler obtém o instante da consulta somente depois de a leitura terminar.
+
+**Contrato HTTP.** `GET /api/v1/contas/{idContaCorrente}/saldo` exige JWT e responde HTTP 200 com `numeroContaCorrente`, `nomeTitular`, `dataHoraConsulta` em UTC no formato round-trip e `saldoAtual` como número, com `Cache-Control: no-store`. Conta sem movimentos responde `0.00`. Conta não cadastrada responde `400 INVALID_ACCOUNT` e conta própria inativa responde `400 INACTIVE_ACCOUNT`, ambos com mensagem e tipo, como exige o enunciado. Conta de outro correntista, inclusive inativa, responde exatamente o mesmo corpo de conta não cadastrada e é registrada no evento 5301. Identificador vazio após remoção de espaços ou acima de 37 caracteres responde erro de validação por campo; segmento ausente não corresponde à rota.
+
+**Limites e logs.** A consulta recebeu configuração própria na seção `Balance`: timeout de 5 segundos, 30 requisições por minuto por correntista e 8 consultas concorrentes sem fila, além do limite global existente. Os limites do saldo e da movimentação são independentes. Excesso responde 429 e timeout responde 504, ambos correlacionados. `BalanceLogger` emite os eventos 5200 a 5203 com fingerprint da conta, sem conta, titular, saldo ou valores em claro.
+
+**Testes.** O handler recebeu testes unitários com o store e o relógio substituídos por NSubstitute, que até então estava referenciado e sem uso. O store de leitura e o endpoint foram testados com SQLite real, incluindo `0.01`, `0.10`, `9999999999.99`, saldo negativo, cancelamento exato de crédito e débito, 200 créditos de `0,10` somando exatamente `20,00`, titularidade, validação estrutural, limites por correntista, timeout com cancelamento observado, conteúdo dos logs, leitura sem efeito colateral e leituras concorrentes com movimentações. O inventário OpenAPI passou a exigir exatamente os dois endpoints. A suíte foi executada quatro vezes seguidas sem falha e passou de 144 para 211 testes.
+
+Limitações registradas na especificação: a independência de fuso é verificada por conversão explícita de offset, pois os testes não alteram o fuso do processo; a consistência sob concorrência é verificada com poucas requisições simultâneas, não por teste de carga; e valores não finitos ou tipo de movimento inválido não chegam a ser persistidos, porque o próprio schema os impede.
+
+`ESPECIFICACAO_SALDO.md` passou a descrever o estado implementado, `ESPECIFICACAO_AUTENTICACAO.md` e `TODO.md` registram a conclusão, e SEC-002, SEC-005 e SEC-017 tiveram seus critérios dependentes do saldo marcados como atendidos. TODO-005 foi atendido para o handler de saldo e continua pendente para o de movimentação; TODO-003, TODO-004 e TODO-006 não foram tratados.
+
+O gate completo foi executado ao final e passou: restore bloqueado, auditoria direta e transitiva sem vulnerabilidades conhecidas, secret scanning sem achados, formatação e analisadores aprovados, build Release com zero avisos e zero erros, 211 testes aprovados e cobertura com nova execução em 211/211. A fixture `Questao5/database.sqlite` manteve o SHA-256 `E355A3EDB7D73E7784A7467513248D530C27CC989C624A35D13A188B2AA8DD3C`. A Entrega E foi encerrada em commit funcional isolado.
+
 ---
