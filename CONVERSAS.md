@@ -496,3 +496,23 @@ Foram criados testes puros de normalização e testes reais com SQLite para cré
 O build Release passou com zero avisos e zero erros, os 28 testes focados passaram e a suíte completa atingiu 55/55 testes aprovados. A verificação adicional de formatação em severidade informativa listou sugestões de estilo preexistentes e equivalentes nos novos arquivos, sem falha de compilação ou do gate obrigatório. C2 e C3 permanecem fora desta entrega.
 
 ---
+
+## Interação 020 — 1º de outubro de 2026
+
+**Modo: Act**
+
+### Usuário
+
+> Solicitou uma mensagem de commit para a C1 e autorizou o início da Entrega C2.
+
+### Cline (assistente)
+
+Foi sugerida a mensagem `feat(movimentacao): implementa núcleo transacional idempotente`. A C1 já estava preparada no index e essa separação foi preservada; nenhum commit ou novo staging foi executado durante a C2.
+
+Foi implementado `POST /api/v1/movimentos` com DTO HTTP separado do comando interno. O contrato exige os quatro campos previstos, valida UUID canônico, conta após trim externo, valor decimal positivo com até duas casas e limite máximo e tipo estrito `C` ou `D`. `JsonUnmappedMemberHandling.Disallow` rejeita propriedades desconhecidas, enquanto `[Consumes("application/json")]` restringe o media type.
+
+Sucesso e repetição retornam HTTP 200 com `idMovimento`. Regras de conta retornam 400 pelo tratamento global existente, e `IdempotencyConflictException` passou a gerar HTTP 409 com código `IDEMPOTENCY_CONFLICT`. Todas as respostas relevantes mantêm o correlation ID. O corpo de 4 KiB é protegido por metadata de servidor e resource filter antecipado baseado em `Content-Length`; isso também torna o controle verificável no `TestServer`, que não impôs sozinho o metadata de transporte.
+
+Foram adicionados 17 testes HTTP para crédito, débito, repetição, conflito, conta inexistente e inativa, JSON inválido, campos ausentes, propriedade desconhecida, UUID não canônico, valores inválidos, tipo inválido, espaços externos na conta, media type e corpo acima de 4 KiB. A suíte completa atingiu 72/72 testes antes do gate final. Timeout, rate limiting, limite de concorrência e logs específicos permanecem em C3.
+
+---

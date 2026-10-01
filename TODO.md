@@ -117,13 +117,14 @@ Essa falha pode afetar diretamente a disponibilidade da tabela `idempotencia`, a
 
 ### TODO-002 — Implementar idempotência no serviço de movimentação
 
-- **Estado:** Em andamento — núcleo transacional C1 concluído; contrato HTTP, limites e observabilidade permanecem pendentes
+- **Estado:** Em andamento — núcleos C1 e C2 concluídos; limites operacionais e observabilidade C3 permanecem pendentes
 - **Prioridade:** Alta
-- **Próxima etapa:** Entrega C2 — contrato HTTP e controles de entrada
+- **Próxima etapa:** Entrega C3 — timeout, rate limiting, concorrência e logs estruturados
 - **Dependência técnica:** TODO-001
 - **Estrutura de banco existente:** tabela `idempotencia`
 - **Especificação:** `ESPECIFICACAO_MOVIMENTACAO.md`
 - **Evidência C1:** comando e handler MediatR, normalização determinística, store SQLite com transação imediata, relógio e gerador de ID injetáveis e testes reais de atomicidade, repetição, conflito, rollback e concorrência.
+- **Evidência C2:** `POST /api/v1/movimentos`, DTO HTTP fechado, JSON estrito, validação automática, limite de corpo de 4 KiB, respostas 200/400/409/413 correlacionadas e testes de integração sobre banco descartável.
 
 #### Problema
 
@@ -154,7 +155,7 @@ Portanto, a existência da tabela representa somente uma estrutura inicial; o co
 - [x] O movimento e o resultado idempotente são persistidos atomicamente.
 - [x] Requisições concorrentes com a mesma chave não geram duplicidade.
 - [x] Falhas e rollbacks não deixam registros parciais.
-- [x] Existem testes unitários e de integração para sucesso, repetição, conflito, concorrência e rollback no núcleo; os testes HTTP serão adicionados em C2.
+- [x] Existem testes unitários e de integração para sucesso, repetição, conflito, concorrência, rollback e contrato HTTP.
 
 ---
 
@@ -295,6 +296,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - **Referenciais:** OWASP API8; CWE-200 e CWE-209
 - **Evidência de origem:** não havia tratamento global explícito, `ProblemDetails` customizado ou contrato uniforme para exceções inesperadas.
 - **Evidência de conclusão:** `GlobalExceptionHandler` centraliza erros de negócio e exceções inesperadas; validação automática, erros 400 e erros 500 usam `ProblemDetails` correlacionado; respostas inesperadas não expõem mensagem, stack trace, caminho, SQL ou segredo; o evento interno 9000 registra somente correlation ID e tipo da exceção. Testes de integração cobrem validação, regra de negócio, exceção inesperada e conteúdo seguro do log.
+- **Evidência C2:** conflito idempotente passou a ser tratado centralmente como HTTP 409 com `IDEMPOTENCY_CONFLICT`; validações do DTO, JSON inválido, propriedade desconhecida e corpo acima do limite retornam Problem Details correlacionado.
 
 #### Critérios de aceite
 
@@ -449,13 +451,14 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - **Evidência atual:** `Questao5.Tests` usa lock file próprio, xUnit v3, Microsoft Testing Platform, NSubstitute, `WebApplicationFactory` e `coverlet.MTP`; 31 testes passam em Release. Há cobertura para configuração, banco temporário, bootstrap versionado e transacional, integridade referencial, hash da fixture, concorrência, rollback, correlação, validação, erro de negócio, exceção inesperada e logs sem dados sensíveis. A coleta em formato Cobertura permanece validada pelo gate local; os percentuais serão atualizados quando a próxima medição consolidada for registrada.
 - **Planejamento da Entrega B:** `ESPECIFICACAO_MOVIMENTACAO.md` define testes HTTP, monetários, transacionais, idempotentes, concorrentes, de conflito, rollback, abuso, cancelamento e conteúdo seguro dos logs que serão obrigatórios na implementação de TODO-002.
 - **Evidência C1:** a suíte passou a ter 55 testes, incluindo 28 casos focados no núcleo da movimentação para canonicalização, limites monetários, tipos, contas, persistência, repetição, conflito, rollback, cancelamento e concorrência idêntica ou conflitante.
+- **Evidência C2:** a suíte passou a ter 72 testes, incluindo 17 casos HTTP para crédito, débito, repetição, conflito, contas inválidas, JSON malformado, campos ausentes, propriedade desconhecida, UUID, valores, tipo, media type e corpo de 4 KiB.
 
 #### Critérios de aceite
 
 - [x] Existe projeto de testes separado da aplicação web.
 - [x] A stack de testes adota xUnit v3 com Microsoft Testing Platform e NSubstitute, sem duplicar frameworks de mocking.
 - [x] Testes de integração usam infraestrutura de banco descartável e determinístico.
-- [ ] São cobertos fluxo feliz HTTP, validações e logs; autenticação/autorização são riscos aceitos e abuso, idempotência, concorrência e rollback dependem dos fluxos bancários.
+- [x] São cobertos fluxo feliz HTTP, validações, idempotência, concorrência e rollback; logs específicos e abuso operacional serão cobertos em C3, e autenticação/autorização permanecem riscos aceitos para o exercício.
 - [ ] Testes são executados automaticamente no pipeline e impedem regressões conhecidas.
 - [x] Coleta de cobertura compatível com Microsoft Testing Platform v2 foi selecionada e validada com `coverlet.MTP 10.1.0`; `coverlet.collector` não é usado.
 
@@ -585,3 +588,4 @@ Estes itens são controles contínuos e não devem ser marcados globalmente como
 - **1º de outubro de 2026:** TODO-001, SEC-003 e SEC-004 concluídos após autorização específica. O bootstrap SQLite tornou-se versionado, estrito, idempotente, atômico e seguro para inicializações concorrentes. O gate completo passou com 31 testes, zero warnings, zero erros, sem vulnerabilidades conhecidas ou segredos detectados; a fixture manteve o SHA-256 esperado.
 - **1º de outubro de 2026:** Entrega B concluída após autorização específica. O contrato HTTP, a regra monetária, a canonicalização idempotente, a transação concorrente, os limites, os eventos de log e a matriz de testes de TODO-002 foram definidos em `ESPECIFICACAO_MOVIMENTACAO.md`. TODO-002 passou de Bloqueado para Planejado, sem implementação funcional.
 - **1º de outubro de 2026:** Entrega C1 implementou o núcleo transacional e idempotente da movimentação com MediatR, Dapper e SQLite, sem endpoint HTTP. Testes cobrem regras, atomicidade, repetição, conflito, rollback, cancelamento e concorrência; TODO-002 passou a Em andamento, aguardando C2 e C3.
+- **1º de outubro de 2026:** Entrega C2 implementou `POST /api/v1/movimentos`, DTO fechado, JSON estrito, validação automática, Problem Details para conflito e limite de corpo de 4 KiB. A suíte atingiu 72 testes; C3 permanece pendente para limites operacionais e logs.

@@ -22,6 +22,27 @@ namespace Questao5.Infrastructure.Services.Errors
             Exception exception,
             CancellationToken cancellationToken)
         {
+            if (exception is IdempotencyConflictException idempotencyConflictException)
+            {
+                httpContext.Response.StatusCode = StatusCodes.Status409Conflict;
+
+                return await problemDetailsService.TryWriteAsync(new ProblemDetailsContext
+                {
+                    HttpContext = httpContext,
+                    Exception = exception,
+                    ProblemDetails = new ProblemDetails
+                    {
+                        Status = StatusCodes.Status409Conflict,
+                        Title = "A chave de idempotência está em conflito.",
+                        Detail = idempotencyConflictException.Message,
+                        Extensions =
+                        {
+                            ["code"] = idempotencyConflictException.Code
+                        }
+                    }
+                }).ConfigureAwait(false);
+            }
+
             if (exception is BusinessRuleException businessRuleException)
             {
                 httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
