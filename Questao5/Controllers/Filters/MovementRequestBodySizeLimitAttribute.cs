@@ -2,7 +2,7 @@
 using Microsoft.AspNetCore.Mvc.Filters;
 using Questao5.Infrastructure.Services.Correlation;
 
-namespace Questao5.Infrastructure.Services.Controllers.Filters
+namespace Questao5.Controllers.Filters
 {
     [AttributeUsage(AttributeTargets.Method)]
     public sealed class MovementRequestBodySizeLimitAttribute : Attribute, IAsyncResourceFilter, IOrderedFilter

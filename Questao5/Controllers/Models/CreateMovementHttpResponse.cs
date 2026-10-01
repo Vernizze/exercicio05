@@ -1,4 +1,4 @@
-namespace Questao5.Infrastructure.Services.Controllers.Models
+namespace Questao5.Controllers.Models
 {
     /// <summary>
     /// Resultado de uma movimentação confirmada ou de sua repetição idempotente.

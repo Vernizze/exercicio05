@@ -3,12 +3,12 @@ using Microsoft.AspNetCore.Http.Timeouts;
 using Microsoft.AspNetCore.Mvc;
 using Questao5.Application.Commands.Requests;
 using Questao5.Application.Exceptions;
-using Questao5.Infrastructure.Services.Controllers.Filters;
-using Questao5.Infrastructure.Services.Controllers.Models;
+using Questao5.Controllers.Filters;
+using Questao5.Controllers.Models;
 using Questao5.Infrastructure.Services.Movements;
 using Questao5.Infrastructure.Services.Security;
 
-namespace Questao5.Infrastructure.Services.Controllers
+namespace Questao5.Controllers
 {
     [ApiController]
     [Route("api/v1/movimentos")]

@@ -4,10 +4,10 @@ using Microsoft.AspNetCore.Mvc;
 using Questao5.Application.Exceptions;
 using Questao5.Application.Queries.Requests;
 using Questao5.Infrastructure.Services.Balances;
-using Questao5.Infrastructure.Services.Controllers.Models;
+using Questao5.Controllers.Models;
 using Questao5.Infrastructure.Services.Security;
 
-namespace Questao5.Infrastructure.Services.Controllers
+namespace Questao5.Controllers
 {
     [ApiController]
     [Route("api/v1/contas/{idContaCorrente}/saldo")]

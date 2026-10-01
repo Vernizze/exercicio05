@@ -1,7 +1,7 @@
 using Questao5.Application.Queries.Responses;
 using System.Globalization;
 
-namespace Questao5.Infrastructure.Services.Controllers.Models
+namespace Questao5.Controllers.Models
 {
     /// <summary>
     /// Saldo atual de uma conta corrente.

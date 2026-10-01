@@ -1,6 +1,6 @@
 using System.Globalization;
 using Questao5.Application.Queries.Responses;
-using Questao5.Infrastructure.Services.Controllers.Models;
+using Questao5.Controllers.Models;
 
 namespace Questao5.Tests.Infrastructure.Services;
 

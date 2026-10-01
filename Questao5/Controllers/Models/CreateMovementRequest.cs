@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace Questao5.Infrastructure.Services.Controllers.Models
+namespace Questao5.Controllers.Models
 {
     /// <summary>
     /// Requisição de movimentação de conta corrente.

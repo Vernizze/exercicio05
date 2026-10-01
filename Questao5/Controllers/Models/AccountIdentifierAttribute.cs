@@ -1,7 +1,7 @@
 using Questao5.Application.Handlers;
 using System.ComponentModel.DataAnnotations;
 
-namespace Questao5.Infrastructure.Services.Controllers.Models
+namespace Questao5.Controllers.Models
 {
     /// <summary>
     /// Identificação de conta corrente: entre 1 e 37 caracteres depois de removidos os espaços externos.
