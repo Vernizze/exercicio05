@@ -209,12 +209,13 @@ Achados do levantamento de fechamento de escopo (Interação 029 de `CONVERSAS.m
 
 #### TODO-005 — Testes unitários com NSubstitute
 
-- **Estado:** Pendente — aguarda decisão
+- **Estado:** Concluído em 1º de outubro de 2026
 - **Prioridade:** Média — ponto extra do enunciado
-- **Evidência:** o pacote NSubstitute está referenciado em `Questao5.Tests`, mas nenhum teste o utilizava; os handlers não possuíam teste unitário com store mockado.
-- **Avanço na Entrega E:** `GetBalanceQueryHandler` recebeu testes unitários com o store e o relógio substituídos por NSubstitute. `CreateMovementCommandHandler` continua coberto apenas por testes com SQLite real e HTTP.
+- **Evidência de origem:** o pacote NSubstitute estava referenciado em `Questao5.Tests`, mas nenhum teste o utilizava; os handlers não possuíam teste unitário com store mockado.
+- **Avanço na Entrega E:** `GetBalanceQueryHandler` recebeu testes unitários com o store e o relógio substituídos por NSubstitute.
+- **Evidência de conclusão:** `CreateMovementCommandHandlerTests` cobre o handler de movimentação com `IMovementStore` substituído por NSubstitute: requisição normalizada entregue ao store, resposta do store devolvida sem alteração (inclusive `IsReplay`), valor, tipo, chave e titular inválidos rejeitados sem chamar o store, propagação das exceções do store e repasse do `CancellationToken`. Nenhum código de produção foi alterado; a suíte passou de 233 para 248 testes.
 
-- [ ] Handlers cobertos por testes unitários com dependências mockadas; atendido para o handler de saldo, pendente para o de movimentação.
+- [x] Handlers cobertos por testes unitários com dependências mockadas.
 
 #### TODO-006 — README e forma de entrega
 
