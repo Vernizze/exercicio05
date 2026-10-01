@@ -392,3 +392,43 @@ A suíte passou a usar `Microsoft.AspNetCore.Mvc.Testing 10.0.12` e `coverlet.MT
 O uso residual de `DateTime.Now` foi substituído por UTC, mas SEC-017 permanece em andamento porque formato, fuso e testes de transição da consulta de saldo dependem do contrato bancário. SEC-013, SEC-014 e SEC-020 também permanecem em andamento apenas nos critérios que dependem de backup/permissões de deploy ou execução automática em CI. Nenhuma funcionalidade bancária, alteração de representação monetária ou reconstrução de schema foi iniciada. O staging preexistente continuou preservado com somente `CONVERSAS.md` staged.
 
 ---
+
+## Interação 015 — 1º de outubro de 2026
+
+**Modo: Act**
+
+### Usuário
+
+> Autorizou a implementação de TODO-001, SEC-003 e SEC-004 para tornar o bootstrap SQLite transacional, versionado, idempotente, seguro para concorrência e estrito diante de esquemas incompatíveis.
+
+### Cline (assistente)
+
+`DatabaseBootstrap.Setup` passou a abrir uma transação SQLite imediata, rejeitar versões de esquema superiores à suportada, criar individualmente somente as tabelas ausentes, validar toda a estrutura antes do commit, executar seed parametrizado com conflito ignorado pela chave da conta, verificar integridade referencial e estrutural e gravar `PRAGMA user_version = 1` apenas ao final. Qualquer falha anterior ao commit reverte integralmente as mudanças da execução.
+
+Foram adicionados `InvalidDatabaseSchemaException` e `SqliteSchemaValidator`. O validador compara quantidade e definição exata das colunas, tipos declarados, nulabilidade, chaves primárias e defaults; exige o índice único de `contacorrente.numero`; valida as constraints `CHECK` de `ativo` e `tipomovimento`; e exige exatamente a chave estrangeira histórica de `movimento.idcontacorrente` para `contacorrente.idcontacorrente`. A representação monetária `REAL` e a declaração histórica incompatível de tipo da FK foram preservadas para não antecipar SEC-005 ou SEC-007.
+
+A nova suíte de regressão cobre criação de banco vazio, recuperação de esquemas parciais compatíveis, preservação de dados, repetição sem duplicação ou sobrescrita, rejeição de tabelas e constraints incompatíveis, rejeição de versão futura sem mutação, rollback após trabalho parcial e seis inicializações concorrentes sobre o mesmo arquivo. Os 16 testes focados de bootstrap passaram.
+
+O gate completo de segurança foi executado em processo PowerShell isolado com `ExecutionPolicy Bypass`, pois a política local impediu apenas o carregamento direto do script sem executar suas etapas. O gate concluiu restore bloqueado, auditoria direta e transitiva sem pacotes vulneráveis conhecidos, secret scanning sem achados, verificação de formatação, build Release determinístico com zero warnings e zero erros, 31 testes aprovados e coleta de cobertura. O SHA-256 de `Questao5/database.sqlite` permaneceu `E355A3EDB7D73E7784A7467513248D530C27CC989C624A35D13A188B2AA8DD3C`.
+
+TODO-001, SEC-003 e SEC-004 foram marcados como concluídos. Nenhum commit foi criado.
+
+---
+
+## Interação 016 — 1º de outubro de 2026
+
+**Modo: Act**
+
+### Usuário
+
+> Autorizou a Entrega A proposta no roadmap: revisar o diff, encerrar formalmente a infraestrutura atual e criar um commit isolado antes de iniciar o planejamento ou a implementação de TODO-002.
+
+### Cline (assistente)
+
+A entrega foi revisada no branch `20260930`. O escopo do commit permaneceu restrito ao bootstrap SQLite transacional, versionado, idempotente, concorrente e estrito, aos respectivos testes de regressão e à documentação de TODO-001, SEC-003 e SEC-004. Nenhum endpoint bancário, regra monetária, migração de chave estrangeira ou implementação de TODO-002 foi incluído.
+
+A evidência de SEC-019 foi atualizada para refletir os 31 testes aprovados e a cobertura adicional de bootstrap, concorrência e rollback. O gate completo foi executado novamente sobre o conteúdo final: restore bloqueado, auditoria direta e transitiva sem vulnerabilidades conhecidas, secret scanning sem achados, formatação aprovada, build Release determinístico com zero warnings e zero erros, 31 testes aprovados e coleta de cobertura concluída. A fixture `Questao5/database.sqlite` manteve o SHA-256 `E355A3EDB7D73E7784A7467513248D530C27CC989C624A35D13A188B2AA8DD3C`.
+
+Com essas validações concluídas, a entrega ficou autorizada para um commit isolado, sem incluir TODO-002 ou alterações bancárias posteriores.
+
+---

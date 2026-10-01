@@ -83,10 +83,11 @@ Antes de iniciar as pendências funcionais, será necessário:
 
 ### TODO-001 — Corrigir a validação do bootstrap do SQLite
 
-- **Estado:** Bloqueado
+- **Estado:** Concluído em 1º de outubro de 2026
 - **Prioridade:** Alta
-- **Bloqueadores:** conclusão e validação das fases 1 a 7; discussão dos detalhes adicionais; autorização expressa do usuário
+- **Bloqueadores:** resolvidos por autorização expressa do usuário após a conclusão e validação das fases 1 a 7
 - **Arquivo identificado:** `Questao5/Infrastructure/Sqlite/DatabaseBootstrap.cs`
+- **Evidência de conclusão:** o bootstrap passou a usar transação imediata, versão de esquema, criação idempotente por tabela, validação estrita da estrutura, seed parametrizado e idempotente, verificações de integridade e rollback implícito quando qualquer etapa falha. A suíte cobre banco vazio, parcial, completo, incompatível, versão futura, repetição, rollback e inicializações concorrentes.
 
 #### Problema
 
@@ -104,13 +105,13 @@ Essa falha pode afetar diretamente a disponibilidade da tabela `idempotencia`, a
 
 #### Critérios de aceite
 
-- [ ] As três tabelas esperadas são verificadas individualmente.
-- [ ] Um banco vazio recebe todo o esquema e os dados iniciais esperados.
-- [ ] Um banco com esquema parcial recebe somente os elementos ausentes.
-- [ ] Um banco com esquema completo não recebe alterações destrutivas.
-- [ ] O bootstrap pode ser executado repetidas vezes sem duplicar dados.
-- [ ] A criação ou atualização do esquema é atômica.
-- [ ] Existem testes para banco vazio, parcial e completo.
+- [x] As três tabelas esperadas são verificadas individualmente.
+- [x] Um banco vazio recebe todo o esquema e os dados iniciais esperados.
+- [x] Um banco com esquema parcial recebe somente os elementos ausentes.
+- [x] Um banco com esquema completo não recebe alterações destrutivas.
+- [x] O bootstrap pode ser executado repetidas vezes sem duplicar dados.
+- [x] A criação ou atualização do esquema é atômica.
+- [x] Existem testes para banco vazio, parcial e completo.
 
 ---
 
@@ -193,32 +194,34 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-003 — Corrigir a validação parcial do bootstrap
 
-- **Estado:** Bloqueado — corresponde ao TODO-001
+- **Estado:** Concluído em 1º de outubro de 2026
 - **Prioridade:** Alta
 - **Referenciais:** OWASP API8; CWE-703 e CWE-754; NIST SSDF PW.7 e PW.8
-- **Evidência:** `DatabaseBootstrap.Setup` encerra quando encontra qualquer uma das três tabelas esperadas.
+- **Evidência de origem:** `DatabaseBootstrap.Setup` encerrava quando encontrava qualquer uma das três tabelas esperadas.
+- **Evidência de conclusão:** `SqliteSchemaValidator` valida individualmente colunas, tipos declarados, nulabilidade, chaves primárias, defaults, índice único de número de conta, constraints `CHECK` e chave estrangeira. `PRAGMA user_version` rejeita versões futuras; estruturas incompatíveis produzem `InvalidDatabaseSchemaException` antes do commit.
 
 #### Critérios de aceite
 
-- [ ] Cada tabela, coluna, constraint e versão esperada é validada individualmente.
-- [ ] Banco parcial não é aceito como banco completo.
-- [ ] Estrutura incompatível produz falha segura e diagnóstico interno útil.
-- [ ] Existem testes para banco vazio, parcial, completo e incompatível.
+- [x] Cada tabela, coluna, constraint e versão esperada é validada individualmente.
+- [x] Banco parcial não é aceito como banco completo.
+- [x] Estrutura incompatível produz falha segura e diagnóstico interno útil.
+- [x] Existem testes para banco vazio, parcial, completo e incompatível.
 
 ### SEC-004 — Tornar bootstrap e seed atômicos e concorrentes com segurança
 
-- **Estado:** Bloqueado — depende do TODO-001/SEC-003
+- **Estado:** Concluído em 1º de outubro de 2026
 - **Prioridade:** Alta
 - **Referenciais:** CWE-362, CWE-367 e CWE-703; NIST SSDF PW.5, PW.7 e PW.8
-- **Evidência:** tabelas e contas iniciais são criadas por comandos separados, sem transação ou proteção para inicializações simultâneas.
+- **Evidência de origem:** tabelas e contas iniciais eram criadas por comandos separados, sem transação ou proteção para inicializações simultâneas.
+- **Evidência de conclusão:** toda preparação usa uma transação SQLite imediata (`BeginTransaction(deferred: false)`), serializando escritores concorrentes. O seed usa parâmetros e `ON CONFLICT(idcontacorrente) DO NOTHING`; versão e commit são gravados somente após `foreign_key_check` e `integrity_check`. Testes comprovam rollback, repetição sem sobrescrita e seis inicializações simultâneas sobre o mesmo arquivo.
 
 #### Critérios de aceite
 
-- [ ] Criação do esquema e seed são executados atomicamente.
-- [ ] Falhas provocam rollback completo.
-- [ ] Inicializações concorrentes não deixam esquema ou dados parciais.
-- [ ] Execuções repetidas preservam dados e não duplicam contas.
-- [ ] Existem testes de falha intermediária, rollback e concorrência.
+- [x] Criação do esquema e seed são executados atomicamente.
+- [x] Falhas provocam rollback completo.
+- [x] Inicializações concorrentes não deixam esquema ou dados parciais.
+- [x] Execuções repetidas preservam dados e não duplicam contas.
+- [x] Existem testes de falha intermediária, rollback e concorrência.
 
 ### SEC-005 — Definir representação monetária determinística
 
@@ -434,7 +437,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - **Prioridade:** Alta
 - **Referenciais:** NIST SSDF PW.7, PW.8 e RV.1; OpenSSF
 - **Evidência de origem:** não existia projeto ou suíte de testes no repositório.
-- **Evidência atual:** `Questao5.Tests` usa lock file próprio, xUnit v3, Microsoft Testing Platform, NSubstitute, `WebApplicationFactory` e `coverlet.MTP`; dezesseis testes passam em Release. Há cobertura para configuração, banco temporário, integridade referencial, hash da fixture, correlação, validação, erro de negócio, exceção inesperada e logs sem dados sensíveis. A cobertura da aplicação foi coletada em formato Cobertura com 88,72% de linhas e 73,07% de branches.
+- **Evidência atual:** `Questao5.Tests` usa lock file próprio, xUnit v3, Microsoft Testing Platform, NSubstitute, `WebApplicationFactory` e `coverlet.MTP`; 31 testes passam em Release. Há cobertura para configuração, banco temporário, bootstrap versionado e transacional, integridade referencial, hash da fixture, concorrência, rollback, correlação, validação, erro de negócio, exceção inesperada e logs sem dados sensíveis. A coleta em formato Cobertura permanece validada pelo gate local; os percentuais serão atualizados quando a próxima medição consolidada for registrada.
 
 #### Critérios de aceite
 
@@ -566,3 +569,4 @@ Estes itens são controles contínuos e não devem ser marcados globalmente como
 - **30 de setembro de 2026:** sete marcos de segurança concluídos. Relatório consolidado criado em `RELATORIO_SEGURANCA.md`. TODO-001 e TODO-002 permanecem bloqueados.
 - **30 de setembro de 2026:** adotados como guardrails permanentes OWASP API Security Top 10, CWE Top 25, CIS Benchmarks, NIST SSDF, OpenSSF e MITRE ATT&CK. Criado `DIRETRIZES_SEGURANCA.md`; o branch de trabalho definido é `20260930`.
 - **30 de setembro de 2026:** análise estática do código atual convertida no backlog SEC-001 a SEC-023, com prioridades, referenciais, evidências, dependências, critérios de aceite, controles positivos e limitações de avaliação.
+- **1º de outubro de 2026:** TODO-001, SEC-003 e SEC-004 concluídos após autorização específica. O bootstrap SQLite tornou-se versionado, estrito, idempotente, atômico e seguro para inicializações concorrentes. O gate completo passou com 31 testes, zero warnings, zero erros, sem vulnerabilidades conhecidas ou segredos detectados; a fixture manteve o SHA-256 esperado.

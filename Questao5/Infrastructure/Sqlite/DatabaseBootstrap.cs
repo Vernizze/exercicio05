@@ -1,8 +1,22 @@
 ﻿using Dapper;
+using Microsoft.Data.Sqlite;
+
 namespace Questao5.Infrastructure.Sqlite
 {
-    public class DatabaseBootstrap : IDatabaseBootstrap
+    public sealed class DatabaseBootstrap : IDatabaseBootstrap
     {
+        private const int CurrentSchemaVersion = 1;
+
+        private static readonly AccountSeed[] AccountSeeds =
+        [
+            new("B6BAFC09 -6967-ED11-A567-055DFA4A16C9", 123, "Katherine Sanchez", 1),
+            new("FA99D033-7067-ED11-96C6-7C5DFA4A16C9", 456, "Eva Woodward", 1),
+            new("382D323D-7067-ED11-8866-7D5DFA4A16C9", 789, "Tevin Mcconnell", 1),
+            new("F475F943-7067-ED11-A06B-7E5DFA4A16C9", 741, "Ameena Lynn", 0),
+            new("BCDACA4A-7067-ED11-AF81-825DFA4A16C9", 852, "Jarrad Mckee", 0),
+            new("D2E02051-7067-ED11-94C0-835DFA4A16C9", 963, "Elisha Simons", 0)
+        ];
+
         private readonly ISqliteConnectionFactory connectionFactory;
 
         public DatabaseBootstrap(ISqliteConnectionFactory connectionFactory)
@@ -13,41 +27,134 @@ namespace Questao5.Infrastructure.Sqlite
         public void Setup()
         {
             using var connection = connectionFactory.OpenConnection();
+            using var transaction = connection.BeginTransaction(deferred: false);
 
-            var table = connection.Query<string>("SELECT name FROM sqlite_master WHERE type='table' AND (name = 'contacorrente' or name = 'movimento' or name = 'idempotencia');");
-            var tableName = table.FirstOrDefault();
-            if (!string.IsNullOrEmpty(tableName) && (tableName == "contacorrente" || tableName == "movimento" || tableName == "idempotencia"))
-                return;
+            var schemaVersion = connection.ExecuteScalar<int>(
+                "PRAGMA user_version;",
+                transaction: transaction);
 
-            connection.Execute("CREATE TABLE contacorrente ( " +
-                               "idcontacorrente TEXT(37) PRIMARY KEY," +
-                               "numero INTEGER(10) NOT NULL UNIQUE," +
-                               "nome TEXT(100) NOT NULL," +
-                               "ativo INTEGER(1) NOT NULL default 0," +
-                               "CHECK(ativo in (0, 1)) " +
-                               ");");
+            if (schemaVersion > CurrentSchemaVersion)
+            {
+                throw new InvalidDatabaseSchemaException(
+                    $"A versão do banco ({schemaVersion}) é superior à versão suportada ({CurrentSchemaVersion}).");
+            }
 
-            connection.Execute("CREATE TABLE movimento ( " +
-                "idmovimento TEXT(37) PRIMARY KEY," +
-                "idcontacorrente INTEGER(10) NOT NULL," +
-                "datamovimento TEXT(25) NOT NULL," +
-                "tipomovimento TEXT(1) NOT NULL," +
-                "valor REAL NOT NULL," +
-                "CHECK(tipomovimento in ('C', 'D')), " +
-                "FOREIGN KEY(idcontacorrente) REFERENCES contacorrente(idcontacorrente) " +
-                ");");
+            EnsureSchema(connection, transaction);
+            SeedAccounts(connection, transaction);
+            ValidateDatabaseIntegrity(connection, transaction);
 
-            connection.Execute("CREATE TABLE idempotencia (" +
-                               "chave_idempotencia TEXT(37) PRIMARY KEY," +
-                               "requisicao TEXT(1000)," +
-                               "resultado TEXT(1000));");
+            connection.Execute(
+                $"PRAGMA user_version = {CurrentSchemaVersion};",
+                transaction: transaction);
 
-            connection.Execute("INSERT INTO contacorrente(idcontacorrente, numero, nome, ativo) VALUES('B6BAFC09 -6967-ED11-A567-055DFA4A16C9', 123, 'Katherine Sanchez', 1);");
-            connection.Execute("INSERT INTO contacorrente(idcontacorrente, numero, nome, ativo) VALUES('FA99D033-7067-ED11-96C6-7C5DFA4A16C9', 456, 'Eva Woodward', 1);");
-            connection.Execute("INSERT INTO contacorrente(idcontacorrente, numero, nome, ativo) VALUES('382D323D-7067-ED11-8866-7D5DFA4A16C9', 789, 'Tevin Mcconnell', 1);");
-            connection.Execute("INSERT INTO contacorrente(idcontacorrente, numero, nome, ativo) VALUES('F475F943-7067-ED11-A06B-7E5DFA4A16C9', 741, 'Ameena Lynn', 0);");
-            connection.Execute("INSERT INTO contacorrente(idcontacorrente, numero, nome, ativo) VALUES('BCDACA4A-7067-ED11-AF81-825DFA4A16C9', 852, 'Jarrad Mckee', 0);");
-            connection.Execute("INSERT INTO contacorrente(idcontacorrente, numero, nome, ativo) VALUES('D2E02051-7067-ED11-94C0-835DFA4A16C9', 963, 'Elisha Simons', 0);");
+            transaction.Commit();
         }
+
+        private static void EnsureSchema(SqliteConnection connection, SqliteTransaction transaction)
+        {
+            EnsureTable(
+                connection,
+                transaction,
+                "contacorrente",
+                """
+                CREATE TABLE IF NOT EXISTS contacorrente (
+                    idcontacorrente TEXT(37) PRIMARY KEY,
+                    numero INTEGER(10) NOT NULL UNIQUE,
+                    nome TEXT(100) NOT NULL,
+                    ativo INTEGER(1) NOT NULL DEFAULT 0,
+                    CHECK(ativo IN (0, 1))
+                );
+                """);
+            SqliteSchemaValidator.ValidateAccountTable(connection, transaction);
+
+            EnsureTable(
+                connection,
+                transaction,
+                "movimento",
+                """
+                CREATE TABLE IF NOT EXISTS movimento (
+                    idmovimento TEXT(37) PRIMARY KEY,
+                    idcontacorrente INTEGER(10) NOT NULL,
+                    datamovimento TEXT(25) NOT NULL,
+                    tipomovimento TEXT(1) NOT NULL,
+                    valor REAL NOT NULL,
+                    CHECK(tipomovimento IN ('C', 'D')),
+                    FOREIGN KEY(idcontacorrente) REFERENCES contacorrente(idcontacorrente)
+                );
+                """);
+            SqliteSchemaValidator.ValidateMovementTable(connection, transaction);
+
+            EnsureTable(
+                connection,
+                transaction,
+                "idempotencia",
+                """
+                CREATE TABLE IF NOT EXISTS idempotencia (
+                    chave_idempotencia TEXT(37) PRIMARY KEY,
+                    requisicao TEXT(1000),
+                    resultado TEXT(1000)
+                );
+                """);
+            SqliteSchemaValidator.ValidateIdempotencyTable(connection, transaction);
+        }
+
+        private static void EnsureTable(
+            SqliteConnection connection,
+            SqliteTransaction transaction,
+            string tableName,
+            string createStatement)
+        {
+            connection.Execute(createStatement, transaction: transaction);
+
+            var exists = connection.ExecuteScalar<long>(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = @TableName;",
+                new { TableName = tableName },
+                transaction) == 1;
+
+            if (!exists)
+            {
+                throw new InvalidDatabaseSchemaException($"A tabela obrigatória '{tableName}' não foi criada.");
+            }
+        }
+
+        private static void SeedAccounts(SqliteConnection connection, SqliteTransaction transaction)
+        {
+            const string sql = """
+                INSERT INTO contacorrente(idcontacorrente, numero, nome, ativo)
+                VALUES (@Id, @Number, @Name, @Active)
+                ON CONFLICT(idcontacorrente) DO NOTHING;
+                """;
+
+            foreach (var account in AccountSeeds)
+            {
+                connection.Execute(sql, account, transaction);
+            }
+        }
+
+        private static void ValidateDatabaseIntegrity(
+            SqliteConnection connection,
+            SqliteTransaction transaction)
+        {
+            var foreignKeyViolations = connection.Query(
+                "PRAGMA foreign_key_check;",
+                transaction: transaction).AsList();
+
+            if (foreignKeyViolations.Count > 0)
+            {
+                throw new InvalidDatabaseSchemaException("O banco contém violações de integridade referencial.");
+            }
+
+            var integrityResults = connection.Query<string>(
+                "PRAGMA integrity_check;",
+                transaction: transaction).AsList();
+
+            if (integrityResults.Count != 1 ||
+                !string.Equals(integrityResults[0], "ok", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDatabaseSchemaException("A verificação de integridade do banco falhou.");
+            }
+        }
+
+        private sealed record AccountSeed(string Id, int Number, string Name, int Active);
     }
 }
