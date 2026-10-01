@@ -51,6 +51,7 @@ Pendências acionáveis descobertas em qualquer especificação, relatório, dir
 - **Estado:** Concluída em 1º de outubro de 2026 — especificação registrada em `ESPECIFICACAO_SALDO.md`
 - **Escopo inicial:** extrair e consolidar requisitos; definir rota, DTOs, respostas HTTP, cálculo monetário, data/hora, segurança, logs, arquitetura e matriz de testes
 - **Limite:** a Entrega D é de planejamento; implementação da consulta de saldo exigirá entrega e autorização posteriores
+- **Revisão documental:** a estratégia de cálculo em tempo real foi substituída pela projeção persistida de saldo (`saldo_conta`), com atualização transacional, centavos inteiros, preenchimento inicial e reconciliação; o cache em memória foi avaliado e descartado nesta etapa; o cenário foi reconfirmado como centrado em conta, sem identidade de titular
 
 #### Critérios de aceite do planejamento
 
@@ -60,14 +61,18 @@ Pendências acionáveis descobertas em qualquer especificação, relatório, dir
 - [x] Definir formato externo, UTC/fuso e serialização determinística da data e hora da consulta.
 - [x] Mapear riscos, limites, logs sem dados excessivos e redução de enumeração.
 - [x] Definir arquitetura e testes positivos, negativos, monetários, temporais, de abuso e regressão.
+- [x] Definir a projeção persistida de saldo, sua estrutura, atualização transacional e reconciliação.
+- [x] Avaliar e descartar explicitamente o cache em memória nesta etapa.
+- [x] Confirmar que o cenário é centrado em conta e não possui dono/identidade de titular.
 - [x] Registrar a especificação antes de qualquer implementação.
 
 ### Entrega E — implementação da consulta de saldo
 
 - **Estado:** Bloqueada — depende de autorização expressa após a revisão da Entrega D
 - **Especificação:** `ESPECIFICACAO_SALDO.md`
-- **Limite atual:** não criar endpoint, query, handler, query store, configuração ou teste executável de saldo sem nova autorização
-- **Sequência proposta:** E1 núcleo e persistência; E2 contrato HTTP; E3 limites, logs, inventário, gate e commit funcional
+- **Limite atual:** não criar endpoint, query, handler, query store, migração, configuração ou teste executável de saldo sem nova autorização
+- **Sequência proposta:** E1 migração e projeção persistida; E2 núcleo de consulta; E3 contrato HTTP; E4 limites, logs, inventário, gate e commit funcional
+- **Decisão arquitetural:** CQRS local com projeção persistida (`saldo_conta`), sem cache em memória, mensageria ou consistência eventual
 
 ## Regra de priorização
 
@@ -299,13 +304,14 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-005 — Definir representação monetária determinística
 
-- **Estado:** Em andamento — contrato `decimal` aplicado em C1 e estratégia do saldo definida na Entrega D; implementação, testes e migração permanecem pendentes
+- **Estado:** Em andamento — contrato `decimal` aplicado em C1, estratégia do saldo definida na Entrega D e projeção persistida definida na revisão documental; implementação e testes permanecem pendentes
 - **Prioridade:** Alta
 - **Referenciais:** CWE-682 e CWE-1339; NIST SSDF PW.4 e PW.5
 - **Evidência:** a coluna `movimento.valor` está declarada como `REAL`, tipo de ponto flutuante binário inadequado para precisão financeira sem estratégia adicional.
 - **Decisão da Entrega B:** contratos e cálculos usarão `decimal`, entradas aceitarão no máximo duas casas sem arredondamento implícito e o limite por movimento será `9999999999.99`. O `REAL` será preservado temporariamente apenas por compatibilidade; a migração permanece fora de TODO-002.
 - **Evidência C1:** `CreateMovementCommand` e a requisição normalizada usam `decimal`; escala maior que 2, valor não positivo e valor acima do limite são rejeitados; a representação canônica usa cultura invariável e duas casas; somente o adaptador SQLite converte para `REAL`.
 - **Decisão da Entrega D:** a consulta lerá movimentos em snapshot consistente, converterá cada `REAL` no adaptador e acumulará em `decimal` verificado, sem `SUM(valor)` em ponto flutuante nem arredondamento silencioso. A limitação de precisão já perdida no armazenamento permanece risco residual.
+- **Revisão da Entrega D:** o saldo será mantido em `saldo_conta` com centavos inteiros e atualizado na mesma transação do movimento. A leitura converte centavos para `decimal`; a reconstrução inicial converte cada `REAL` legado em `decimal` verificado, sem `SUM(valor)` em ponto flutuante. A precisão perdida no armazenamento legado permanece risco residual.
 
 #### Critérios de aceite
 
@@ -314,6 +320,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - [x] O uso de centavos em `INTEGER` foi avaliado; decidiu-se por mitigação temporária compatível com o esquema legado e migração futura separada.
 - [ ] Saldo e movimentações mantêm precisão em casos limítrofes e repetidos.
 - [ ] Existem testes para centavos, arredondamento, limites e soma de muitos movimentos.
+- [ ] A projeção `saldo_conta` mantém o saldo em centavos inteiros e reconcilia com os movimentos.
 
 ### SEC-006 — Habilitar e testar integridade referencial SQLite
 
@@ -669,3 +676,4 @@ Estes itens são controles contínuos e não devem ser marcados globalmente como
 - **1º de outubro de 2026:** pausa de organização concluída. `TODO.md` foi confirmado como fonte canônica de escopo e andamento; documentos especializados e históricos foram classificados sem criar backlog paralelo. O roadmap foi consolidado com C4 para limpeza, documentação, gate e commit funcional, seguida da Entrega D para planejar a consulta de saldo. Estados evidentemente desatualizados de segurança foram reconciliados com as evidências de C1 a C3.
 - **1º de outubro de 2026:** Entrega C4 removeu o endpoint e o modelo `WeatherForecast`, eliminou comentários residuais do template e adicionou regressão do inventário OpenAPI. A especificação foi reconciliada com o estado implementado. O gate completo passou com 80 testes, zero avisos, zero erros, sem vulnerabilidades conhecidas ou segredos detectados; a fixture manteve o SHA-256 esperado. SEC-018 foi concluído e D tornou-se a próxima entrega planejável.
 - **1º de outubro de 2026:** Entrega D consolidou em `ESPECIFICACAO_SALDO.md` os requisitos, contrato HTTP, cálculo monetário, tempo UTC, snapshot de leitura, limites, logs, arquitetura, testes e riscos residuais da consulta de saldo. O gate passou com 80 testes, zero avisos, zero erros, sem vulnerabilidades conhecidas ou segredos detectados; a fixture manteve o SHA-256 esperado. Nenhum código funcional foi implementado; a Entrega E permanece bloqueada até autorização específica.
+- **1º de outubro de 2026:** revisão documental da Entrega D substituiu o cálculo em tempo real pela projeção persistida de saldo (`saldo_conta`), com centavos inteiros, atualização transacional com movimento e idempotência, preenchimento inicial e reconciliação. O cache em memória foi avaliado e descartado nesta etapa, e o cenário foi reconfirmado como centrado em conta, sem identidade de titular. Nenhum código funcional, schema, fixture ou dado operacional foi alterado; a Entrega E permanece bloqueada.

@@ -600,3 +600,45 @@ O gate oficial excedeu o limite de 30 segundos da ferramenta quando executado co
 A Entrega D foi encerrada em commit documental isolado, sem alteração de código-fonte, configuração funcional, dependência, schema, fixture ou dado operacional. O workspace e o index foram confirmados limpos após o commit.
 
 ---
+
+## Interação 025 — 1º de outubro de 2026
+
+**Modo: Plan**
+
+### Usuário
+
+> Manifestou preocupação com muitos acessos simultâneos e com o risco de o processamento de saldo em tempo real travar a base, perguntando o que já havia sido planejado para esse cenário.
+
+### Cline (assistente)
+
+Foi apresentado um parecer apontando que snapshot de leitura, timeout, rate limit e concorrência limitada já estavam previstos, mas não fechavam a estratégia para alta simultaneidade no SQLite. O ponto mais crítico identificado foi a ausência de índice para localizar movimentos por conta, o que faria cada consulta percorrer toda a tabela `movimento`; também foi discutido o modo de journal, o tempo de leitura e a contenção com escritores. As recomendações registradas foram: índice para movimentos por conta validado por `EXPLAIN QUERY PLAN`, avaliação controlada de WAL e checkpoint, transação de leitura curta, leitura incremental sem materializar todo o histórico, concorrência limitada e configurável, `busy_timeout` pequeno e cancelável, e testes específicos de carga e contenção. A projeção de saldo foi citada como evolução caso as metas de desempenho não fossem atingidas.
+
+Na sequência, o usuário propôs aplicar CQRS de fato, separando leitura e gravação: gravar o saldo consolidado em tabela própria na mesma transação da movimentação, manter esse conteúdo em cache em memória carregado na inicialização e servir a leitura a partir do cache.
+
+Foi emitido parecer técnico e negocial favorável à direção, com ajustes. A tabela consolidada atualizada sincronamente na mesma transação foi recomendada, com saldo em centavos inteiros, coluna de versão, preenchimento inicial e reconciliação, e rejeição explícita de `SUM(valor)` sobre o `REAL` legado. O cache local foi considerado viável apenas como acelerador descartável, nunca como fonte de verdade, com ressalvas sobre a janela entre o commit do banco e a publicação em memória, sobre invalidação e fallback, e sobre a impossibilidade de alegar alta disponibilidade real. Foi recomendada evolução incremental: projeção persistida primeiro, medição depois e cache somente se necessário.
+
+O usuário decidiu, então, implementar apenas a tabela consolidada neste momento, deixando o cache fora do escopo por sua complexidade. Foi confirmado o escopo resultante, a justificativa e a lista de itens excluídos, além de ter sido proposta a atualização documental correspondente.
+
+Por fim, o usuário perguntou se as contas possuem dono ou se o cenário trata as contas de forma isolada. Foi confirmado que o cenário é centrado na conta e não na pessoa: a tabela `contacorrente` possui apenas `idcontacorrente`, `numero`, `nome` e `ativo`, sem tabela de pessoas, coluna de proprietário ou identidade de titular. Foi esclarecido que `nomeTitular` é um atributo descritivo e que a ausência de identidade é decisão de escopo com risco de autorização aceito, já catalogado em SEC-002. Também foi confirmado que a projeção de saldo permanece indexada por conta e não é afetada por esse ponto.
+
+Nenhum arquivo foi alterado nesta interação, pois o modo vigente era Plan.
+
+---
+
+## Interação 026 — 1º de outubro de 2026
+
+**Modo: Act**
+
+### Usuário
+
+> ok, por hora, só atualize nossa documentação, ok?
+
+### Cline (assistente)
+
+A documentação foi atualizada sem qualquer implementação funcional. Em `ESPECIFICACAO_SALDO.md`, o cálculo do saldo em tempo real foi substituído pela projeção persistida: nova seção de modelo de leitura, estrutura lógica de `saldo_conta` com centavos inteiros e coluna de versão, atualização na mesma transação do movimento com verificação prévia de idempotência, representação monetária, preenchimento inicial e reconciliação, tratamento de contas sem movimentos e overflow, e exclusão explícita do cache. Foram também revisadas as seções de consistência e concorrência, arquitetura planejada, matriz de testes, riscos residuais e critérios para a futura implementação. Foi acrescentada a seção que confirma o cenário centrado em conta, sem identidade de titular.
+
+Em `TODO.md`, a Entrega D recebeu a revisão documental e novos critérios de aceite; a Entrega E foi reescrita com a sequência E1 migração e projeção persistida, E2 núcleo de consulta, E3 contrato HTTP e E4 limites, logs, inventário, gate e commit funcional, com a decisão arquitetural de CQRS local sem cache; SEC-005 foi atualizado com a estratégia de centavos inteiros na projeção; e o histórico de atualização recebeu a entrada correspondente.
+
+Nenhum código-fonte, teste, configuração funcional, dependência, schema, fixture ou dado operacional foi alterado, e nenhum commit foi criado nesta interação.
+
+---

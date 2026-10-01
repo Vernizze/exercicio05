@@ -4,12 +4,18 @@
 
 Este documento consolida a Entrega D, realizada em 1º de outubro de 2026, e define o contrato e o desenho técnico da futura consulta de saldo. A entrega é exclusivamente de planejamento: nenhum endpoint, query, handler, store, configuração operacional ou teste executável de saldo foi implementado.
 
+Uma revisão documental posterior, também sem implementação funcional, substituiu o cálculo do saldo em tempo real pela **projeção persistida de saldo**. O saldo deixa de ser recalculado a partir de todo o histórico a cada consulta e passa a ser mantido em uma tabela consolidada, atualizada na mesma transação da movimentação. Um cache em memória foi avaliado e **descartado explicitamente** nesta etapa. O cenário foi reconfirmado como centrado em conta, sem identidade de titular.
+
 Fazem parte desta especificação:
 
 - requisitos funcionais do enunciado;
+- confirmação de que o cenário é centrado em conta, sem identidade de titular;
 - contrato HTTP versionado e DTO de resposta;
 - validações de entrada e regras de negócio;
+- modelo de leitura baseado em projeção persistida de saldo;
 - cálculo monetário determinístico sobre o esquema legado;
+- atualização transacional da projeção com o movimento e a idempotência;
+- preenchimento inicial e reconciliação da projeção;
 - formato externo da data e hora da consulta;
 - limites operacionais e proteção contra abuso;
 - eventos estruturados e dados proibidos em logs;
@@ -21,10 +27,12 @@ Permanecem fora do escopo desta entrega:
 - implementação da consulta de saldo;
 - alteração do endpoint de movimentação;
 - cadastro ou manutenção de contas;
-- autenticação e autorização, dispensadas somente para este exercício;
+- autenticação, autorização e identidade baseada em titular, dispensadas somente para este exercício;
 - migração de `movimento.valor` de `REAL` para centavos inteiros;
 - correção do tipo histórico de `movimento.idcontacorrente`;
-- mudanças no schema, na fixture ou nos dados operacionais;
+- cache em memória, cache distribuído ou qualquer acelerador de leitura descartável;
+- mensageria, projeção assíncrona ou consistência eventual;
+- mudanças no schema legado, na fixture ou nos dados operacionais;
 - inclusão de dependências, CI/CD ou infraestrutura.
 
 ## 2. Requisitos consolidados
@@ -41,6 +49,17 @@ O enunciado exige que o serviço:
 8. retorne HTTP 400 com mensagem descritiva e tipo da falha quando uma regra de negócio não for atendida.
 
 As contas já são fornecidas pelo bootstrap. Não será criado serviço de cadastro.
+
+### 2.1 Escopo centrado em conta
+
+O cenário é centrado na **conta corrente** e não na pessoa. A tabela `contacorrente` possui apenas `idcontacorrente`, `numero`, `nome` e `ativo`, sem tabela de pessoas, coluna de proprietário ou chave estrangeira para um cliente. Não existe autenticação nem identidade de titular.
+
+Consequências registradas:
+
+- `nomeTitular` é o conteúdo descritivo de `contacorrente.nome` e não identifica quem consulta;
+- a conta é a unidade de isolamento, de cálculo e de projeção;
+- não há autorização por titular; o risco correspondente é aceito apenas no exercício anônimo;
+- a ausência de identidade não altera o desenho da projeção de saldo, que permanece indexada por conta.
 
 ## 3. Contrato HTTP
 
@@ -96,6 +115,8 @@ X-Correlation-ID: 2dfe616b5f034b169b3e81745e189f68
 
 O modelo de aplicação deve manter `saldoAtual` como `decimal`. O JSON deve usar número, não texto. O exemplo `0.00` expressa a escala monetária, mas consumidores não podem depender da preservação lexical de zeros finais em um número JSON.
 
+`nomeTitular` é um atributo descritivo da conta; o projeto não possui identidade de titular autenticada nem vínculo de propriedade entre pessoa e conta.
+
 `dataHoraConsulta` representa o instante em que a leitura consistente foi concluída. O valor será obtido de `TimeProvider.GetUtcNow()` somente depois de conta e movimentos terem sido lidos e validados, e será formatado explicitamente com `ToString("O", CultureInfo.InvariantCulture)`.
 
 ### 3.4 Erros
@@ -114,7 +135,7 @@ Erros usam `application/problem+json`, o tratamento global existente e a extens�
 
 As mensagens de `INVALID_ACCOUNT` e `INACTIVE_ACCOUNT` seguirão o contrato já usado pela movimentação. A distinção exigida pelo enunciado permite enumeração do estado da conta; esse risco é aceito somente no exercício anônimo e deverá ser reavaliado com autenticação antes de uso real.
 
-## 4. Cálculo monetário
+## 4. Modelo de leitura: projeção persistida de saldo
 
 ### 4.1 Fórmula
 
@@ -122,48 +143,114 @@ As mensagens de `INVALID_ACCOUNT` e `INACTIVE_ACCOUNT` seguirão o contrato já 
 saldo = soma(movimentos C) - soma(movimentos D)
 ```
 
-Sem movimentos, o saldo lógico é `0.00m`.
+Sem movimentos, o saldo é `0.00`.
 
-### 4.2 Estratégia sobre o `REAL` legado
+### 4.2 Decisão arquitetural
 
-O SQLite não deverá executar `SUM(valor)` para formar o resultado final, pois isso manteria a aritmética em ponto flutuante binário. A implementação planejada deverá:
+O saldo **não** será recalculado a partir de todo o histórico a cada consulta. Em vez disso, será mantido em uma projeção persistida, a tabela `saldo_conta`, atualizada de forma síncrona na mesma transação que grava o movimento.
 
-1. abrir uma conexão pela `ISqliteConnectionFactory`;
-2. iniciar uma transação de leitura para obter um snapshot consistente;
-3. buscar a conta por SQL parametrizado e validar existência e atividade;
-4. buscar `tipomovimento` e `valor` de todos os movimentos da conta no mesmo snapshot;
-5. materializar o `REAL` legado como `double` somente no adaptador SQLite;
-6. rejeitar valores não finitos e converter cada valor individualmente com `Convert.ToDecimal` para o domínio `decimal`;
-7. rejeitar como erro interno valores não positivos, acima do limite histórico ou com escala lógica incompatível, sem arredondamento silencioso;
-8. acumular créditos e débitos com operações `decimal` verificadas;
-9. normalizar o zero para `0.00m` e retornar um `decimal` com escala lógica de duas casas.
+Motivos:
 
-A conversão compensatória pertence exclusivamente ao adaptador de persistência. Query, handler, controller e DTO não usarão `double`.
+- a leitura deixa de percorrer todo o histórico e passa a ser uma consulta por chave primária;
+- o custo da consulta não cresce com a quantidade de movimentos da conta;
+- transações de leitura ficam curtas, reduzindo a contenção com a escrita;
+- a consistência do saldo continua garantida pelo banco, sem depender de sincronização entre processos.
 
-### 4.3 Limites e overflow
+A separação entre o modelo de escrita, formado por `movimento` e `idempotencia`, e o modelo de leitura, formado por `saldo_conta`, caracteriza um CQRS local. Não haverá bancos distintos, mensageria ou consistência eventual.
 
+### 4.3 Estrutura da tabela consolidada
+
+Estrutura lógica planejada:
+
+```sql
+CREATE TABLE saldo_conta (
+    idcontacorrente TEXT(37) PRIMARY KEY,
+    saldo_centavos INTEGER NOT NULL,
+    versao INTEGER NOT NULL,
+    FOREIGN KEY(idcontacorrente) REFERENCES contacorrente(idcontacorrente)
+);
+```
+
+Decisões:
+
+- `idcontacorrente` é a chave primária e referencia a conta existente;
+- `saldo_centavos` usa **centavos inteiros**, evitando introduzir um novo campo de ponto flutuante;
+- `versao` é incrementada a cada movimento confirmado e serve de base para reconciliação e detecção de divergência;
+- a projeção persistida é a única fonte autoritativa de leitura; não existe cache.
+
+### 4.4 Atualização transacional
+
+A movimentação confirmada atualizará a projeção na mesma transação imediata já usada hoje:
+
+1. abrir conexão e transação imediata (`BeginTransaction(deferred: false)`);
+2. consultar a idempotência pela chave normalizada;
+3. em replay válido, **não** inserir movimento e **não** atualizar o saldo, retornando o resultado original;
+4. validar existência e atividade da conta;
+5. inserir o movimento;
+6. atualizar `saldo_conta`, somando ou subtraindo o valor e incrementando `versao`;
+7. registrar o resultado idempotente;
+8. confirmar a transação.
+
+A idempotência é verificada antes de qualquer escrita, impedindo que a repetição de uma requisição aplique o valor duas vezes no saldo. Em qualquer exceção anterior ao commit, movimento, saldo e idempotência são revertidos juntos.
+
+### 4.5 Representação monetária
+
+- o contrato de entrada, o domínio e a resposta HTTP usam `decimal`;
+- o adaptador de persistência converte o valor validado para centavos inteiros ao atualizar `saldo_conta`;
+- o acúmulo usa aritmética inteira verificada, sem ponto flutuante;
+- na leitura, `saldo_centavos` é convertido para `decimal` no adaptador e normalizado para escala 2;
+- `REAL` permanece somente em `movimento.valor`, por compatibilidade histórica;
+- não haverá `SUM(valor)` sobre o `REAL` legado.
+
+### 4.6 Preenchimento inicial e reconciliação
+
+Como já podem existir movimentos antes da criação da projeção, a migração deverá:
+
+1. criar a tabela `saldo_conta` de forma idempotente;
+2. criar uma linha para cada conta existente;
+3. reconstruir o saldo a partir dos movimentos, convertendo cada `REAL` individualmente e acumulando em `decimal` verificado;
+4. converter o resultado validado para centavos;
+5. gravar saldo e versão;
+6. validar a reconciliação antes de concluir a migração.
+
+A reconstrução não usará `SUM(valor)` em ponto flutuante. Uma rotina de reconciliação, executável sob demanda, comparará o saldo consolidado com o recalculado a partir dos movimentos para detectar divergências.
+
+### 4.7 Contas sem movimentos e overflow
+
+- conta ativa sem movimentos tem projeção `saldo_centavos = 0`;
 - cada movimento permanece sujeito ao limite histórico de `9999999999.99`;
-- o acumulador usa `decimal` e operação verificada;
+- o acumulador usa aritmética inteira e decimal verificadas;
 - overflow, tipo de movimento incompatível ou valor persistido fora do contrato produz falha interna segura;
 - não haverá saturação, truncamento, arredondamento implícito ou retorno parcial;
-- a futura migração para centavos inteiros continua sendo a correção estrutural recomendada e não faz parte da consulta de saldo.
+- a migração definitiva de `movimento.valor` para centavos inteiros continua sendo a correção estrutural recomendada e permanece fora desta entrega.
+
+### 4.8 Cache explicitamente fora de escopo
+
+Um cache em memória foi avaliado e descartado nesta etapa. Os motivos registrados são:
+
+- exigiria sincronizar o commit do banco com a publicação em memória;
+- introduziria janela de leitura potencialmente desatualizada;
+- aumentaria estados de falha, invalidação e recuperação;
+- traria ganho marginal diante da leitura por chave primária já proporcionada pela projeção.
+
+A decisão poderá ser revista após medição, caso a consulta sobre `saldo_conta` não atinja metas de desempenho, e apenas com critérios explícitos de consistência, versionamento e fallback.
 
 ## 5. Consistência e concorrência
 
-A conta e seus movimentos deverão ser lidos na mesma conexão e transação de leitura. Isso evita combinar metadados de um instante com movimentos de outro durante gravações concorrentes.
+A consulta lerá a conta e o saldo consolidado na mesma conexão e transação de leitura, garantindo que número, titular e saldo pertençam ao mesmo instante, mesmo durante gravações concorrentes.
 
 O fluxo planejado é:
 
 1. validar e normalizar o identificador recebido;
 2. abrir conexão e transação de leitura;
 3. ler e validar a conta;
-4. ler os movimentos associados pelo identificador persistido da conta;
-5. calcular o saldo em `decimal`;
+4. ler `saldo_conta` pelo identificador persistido da conta;
+5. converter centavos para `decimal` e normalizar a escala;
 6. concluir a leitura;
 7. obter o instante UTC da resposta;
 8. retornar o DTO.
 
-A consulta é somente leitura e não usa idempotência. Cancelamento e timeout devem ser propagados até o acesso a dados. Não será usado lock de escrita nem transação imediata.
+A escrita que mantém a projeção usa a transação imediata já existente; a consulta é somente leitura, não usa idempotência e não abre transação imediata. Cancelamento e timeout devem ser propagados até o acesso a dados. Como a leitura é uma consulta por chave primária, a transação permanece curta, reduzindo a contenção com escritores.
 
 ## 6. Limites operacionais
 
@@ -223,15 +310,19 @@ Responsabilidades:
 - `BalanceController`: rota, validação estrutural, status HTTP, headers de cache e envio ao Mediator;
 - `GetBalanceQuery`: identificador normalizado da conta;
 - `GetBalanceQueryHandler`: orquestração da consulta, sem SQL ou regra de serialização;
-- `IBalanceQueryStore`: contrato de leitura da conta e cálculo monetário;
-- `BalanceQueryStore`: snapshot SQLite, SQL parametrizado, validações e adaptação do `REAL` para `decimal`;
+- `IBalanceQueryStore`: contrato de leitura da conta e do saldo consolidado;
+- `BalanceQueryStore`: snapshot SQLite, SQL parametrizado, validação de conta e conversão de centavos para `decimal`;
 - `GetBalanceResponse`: resposta interna com número, titular, instante UTC e saldo;
 - `GetBalanceHttpResponse`: contrato público fechado;
 - `BalanceLogger`: Event IDs 5200–5203 e fingerprint seguro;
 - `TimeProvider`: relógio UTC injetável para resposta e testes determinísticos;
 - `BusinessRuleException`: reutilização dos códigos `INVALID_ACCOUNT` e `INACTIVE_ACCOUNT`.
 
-Pastas e namespaces devem seguir a separação atual entre `Application`, `Infrastructure/Database/QueryStore` e `Infrastructure/Services`.
+No lado de escrita, `IMovementStore`/`MovementStore` passam a manter a projeção: dentro da transação imediata existente, após inserir o movimento e antes de confirmar, atualizam `saldo_conta` com o valor em centavos e o incremento de `versao`. A idempotência continua sendo verificada antes de qualquer escrita.
+
+O schema evolui por migração versionada, elevando `PRAGMA user_version` e criando `saldo_conta` de forma idempotente, com preenchimento inicial transacional. Nenhuma alteração será feita na fixture versionada.
+
+Pastas e namespaces devem seguir a separação atual entre `Application`, `Infrastructure/Database/CommandStore`, `Infrastructure/Database/QueryStore` e `Infrastructure/Services`.
 
 ## 9. Matriz de testes planejada
 
@@ -253,15 +344,28 @@ Pastas e namespaces devem seguir a separação atual entre `Application`, `Infra
 - erros usam Problem Details e correlation ID;
 - nenhuma falha retorna nome, saldo, SQL ou detalhe interno.
 
+### Projeção persistida de saldo
+
+- a migração cria `saldo_conta` de forma idempotente e eleva `PRAGMA user_version`;
+- o preenchimento inicial reconstrói o saldo dos movimentos existentes e reconcilia com o conteúdo da projeção;
+- conta ativa sem movimentos tem projeção `saldo_centavos = 0` e resposta `0.00`;
+- crédito incrementa e débito decrementa `saldo_centavos` na mesma transação do movimento;
+- `versao` é incrementada exatamente uma vez por movimento confirmado;
+- replay idempotente não insere movimento e não altera saldo nem versão;
+- falha entre movimento e saldo reverte ambos por rollback atômico;
+- movimentações concorrentes não aplicam valor duas vezes nem perdem atualização;
+- a rotina de reconciliação detecta divergência forçada entre projeção e movimentos;
+- a consulta lê `saldo_conta` por chave primária e não percorre o histórico.
+
 ### Monetário e persistência
 
-- ausência de movimentos produz `0.00m`;
+- ausência de movimentos produz `0.00`;
 - apenas créditos, apenas débitos e saldo negativo;
 - centavos como `0.01`, `0.10` e `9999999999.99`;
 - somas repetidas, cancelamento exato de crédito e débito e grande quantidade de movimentos;
 - resultado independente da cultura atual do processo;
 - valor não finito, escala incompatível, tipo inválido e overflow persistidos artificialmente falham de forma segura;
-- leitura não altera conta, movimento, idempotência ou fixture;
+- leitura não altera conta, movimento, idempotência, projeção ou fixture;
 - consulta concorrente com movimentação observa um snapshot consistente.
 
 ### Data e hora
@@ -297,18 +401,23 @@ Pastas e namespaces devem seguir a separação atual entre `Application`, `Infra
 5. **Consistência local:** a transação fornece snapshot no SQLite local; topologias distribuídas ou réplicas não fazem parte do projeto.
 6. **Limites por IP:** NAT, proxies e endereços compartilhados reduzem precisão do controle; identidade autenticada é necessária em ambiente real.
 7. **Dados pessoais na resposta:** nome e número são exigidos; `no-store`, TLS no ambiente e autorização futura são necessários para reduzir exposição.
+8. **Divergência da projeção:** se houver escrita direta em `movimento` fora da aplicação, o saldo consolidado não será atualizado. Toda movimentação deve passar pelo store autorizado, e a reconciliação cobre diagnóstico e correção.
+9. **Ausência de identidade de titular:** o cenário é centrado na conta e não conhece dono; existe apenas nome descritivo. Risco aceito somente no exercício anônimo.
+10. **Sem cache e sem alta disponibilidade:** a projeção melhora desempenho e previsibilidade de latência, mas aplicação e SQLite continuam sendo pontos únicos de falha. Esta entrega não fornece alta disponibilidade.
 
 ## 11. Critérios para a futura implementação
 
 A implementação somente poderá começar após autorização expressa e deverá ser dividida em mudanças pequenas e revisáveis. Antes do commit funcional será obrigatório:
 
 1. confirmar branch e workspace limpos;
-2. preservar fixture e schema;
-3. implementar núcleo/query store e testes monetários primeiro;
-4. implementar endpoint e contrato HTTP em etapa própria;
-5. implementar limites e logs em etapa própria;
-6. atualizar o inventário OpenAPI;
-7. executar restore bloqueado, auditoria, secret scanning, formatação, build, testes e cobertura;
-8. revisar riscos OWASP API/CWE, dados em logs e riscos residuais;
-9. atualizar `TODO.md`, `CONVERSAS.md` e esta especificação com o estado efetivamente implementado;
-10. criar commit funcional isolado somente após o gate completo passar.
+2. preservar a fixture `Questao5/database.sqlite` e o SHA-256 esperado;
+3. implementar a migração versionada e a tabela `saldo_conta`, com preenchimento inicial e reconciliação;
+4. atualizar a escrita para manter a projeção na mesma transação, sem duplicar valor em replay idempotente;
+5. implementar o núcleo de consulta (`IBalanceQueryStore`) e os testes monetários;
+6. implementar endpoint, contrato HTTP, `Cache-Control: no-store` e inventário OpenAPI em etapa própria;
+7. implementar limites operacionais e logs 5200–5203 em etapa própria;
+8. não introduzir cache em memória, mensageria ou consistência eventual nesta entrega;
+9. executar restore bloqueado, auditoria direta e transitiva, secret scanning, formatação, build Release, testes e cobertura;
+10. revisar riscos OWASP API/CWE, dados em logs, divergência de projeção e riscos residuais;
+11. atualizar `TODO.md`, `CONVERSAS.md` e esta especificação com o estado efetivamente implementado;
+12. criar commit funcional isolado somente após o gate completo passar.
