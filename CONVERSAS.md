@@ -1229,3 +1229,57 @@ Em seguida, este commit documental foi criado e o branch `20260930` foi publicad
 A abertura e o merge da pull request ficam com o usuário, no GitHub, a partir do link de comparação entre `master` e `20260930` entregue junto com o título e a descrição sugeridos. Este histórico registra o trabalho até a publicação do branch; o merge, por acontecer depois deste commit, não está registrado aqui.
 
 ---
+
+## Interação 045 — 1º de outubro de 2026
+
+**Modo: Plan**
+
+### Usuário
+
+> antes de fechar a PR, o que temos nesse item encerramento formal dos itens SEC que dependem de infraestrutura ?
+
+### Claude Code (assistente)
+
+Foi explicado que o item não era trabalho de código, e sim uma decisão sobre como registrar, no `TODO.md`, os itens de segurança que continuavam abertos por dependerem de algo que o desafio não define. O estado dos 23 itens foi levantado no próprio `TODO.md`: doze resolvidos e onze abertos, em três grupos.
+
+1. Dependentes de infraestrutura inexistente: SEC-011 (hosts permitidos), SEC-012 (TLS de produção), SEC-021 (pipeline seguro), SEC-022 (CIS Benchmark) e SEC-023 (monitoramento e detecções).
+2. Feitos localmente, com um critério preso ao pipeline ou ao deploy: SEC-013, SEC-014, SEC-019 e SEC-020.
+3. Abertos por decisão: SEC-007 (tipo da chave estrangeira, que exigiria reconstruir uma tabela do proponente), SEC-015 (eventos de inicialização e de validação estrutural) e a migração de um pacote legado.
+
+Foram recomendados: encerrar como fora do escopo os itens de infraestrutura, o critério de deploy do SEC-013 e o SEC-007; considerar um workflow de GitHub Actions para rodar o gate a cada PR, já que o repositório está no GitHub, com a ressalva de que seria trabalho novo e não testado em um runner; e manter SEC-015 e o pacote legado como pendência conhecida. Nenhum arquivo foi alterado.
+
+---
+
+## Interação 046 — 1º de outubro de 2026
+
+**Modo: Act**
+
+### Usuário
+
+> vamos encerrar ambos, creio que chegamos a um termo nesse desafio. Obrigado pela ajuda
+
+### Claude Code (assistente)
+
+A resposta foi entendida como autorização para os dois itens da pergunta anterior: o encerramento documental dos itens SEC e o workflow de CI. A execução partiu do commit `607790c`, no branch `20260930`, já publicado; a pull request ainda não havia sido aberta.
+
+#### Encerramento dos itens de segurança
+
+SEC-007, SEC-011, SEC-012, SEC-021, SEC-022 e SEC-023 foram encerrados como fora do escopo do exercício, cada um com motivo e risco residual registrados no próprio item, e com a indicação de que devem ser reabertos antes de qualquer implantação real. O critério de backup e permissões do SEC-013 foi encerrado da mesma forma. SEC-014, SEC-019 e SEC-020 passaram a constar como concluídos no escopo local. SEC-015 e a migração do pacote legado foram mantidos como pendência conhecida. Foi acrescentado ao `TODO.md` um quadro com a situação dos 23 itens e a ressalva de que encerrar não significa atender: nenhum desses controles é alegado como implementado. O README passou a apontar esse encerramento na seção de limitações.
+
+#### Workflow de CI
+
+Foi escrito um workflow de GitHub Actions que executa o gate completo a cada push e a cada pull request para `master`, em runner Windows, com as ações `actions/checkout` e `actions/setup-dotnet` fixadas pelo commit das versões mais recentes, permissão somente de leitura e sem segredos nem cache. As versões e os parâmetros das ações foram conferidos nos repositórios oficiais.
+
+O push desse commit foi **recusado pelo GitHub**: a credencial guardada no Git Credential Manager não possui o escopo `workflow`, exigido para criar ou alterar arquivos em `.github/workflows`. A restrição não foi contornada. O commit local foi desfeito e a ordem foi invertida: primeiro o commit documental, publicável, e por último o commit do workflow, que permanece somente local para o responsável publicar com uma credencial que tenha o escopo necessário.
+
+Consequências registradas com exatidão no `TODO.md`: o workflow existe, mas não está no repositório remoto; sua execução no GitHub não foi verificada; e os critérios de execução em pipeline de SEC-014, SEC-019 e SEC-020 continuam dependentes dessa publicação.
+
+#### Fechamento
+
+O gate completo foi executado e passou: restore bloqueado, auditoria direta e transitiva sem vulnerabilidades conhecidas, secret scanning sem achados, formatação e analisadores aprovados, build Release com zero avisos e zero erros, 340 testes aprovados e cobertura com nova execução em 340/340. A fixture `Questao5/database.sqlite` manteve o SHA-256 `E355A3EDB7D73E7784A7467513248D530C27CC989C624A35D13A188B2AA8DD3C`. Nenhum código-fonte ou teste foi alterado.
+
+Este commit documental foi publicado no branch `20260930`. O commit do workflow, posterior a ele, ficou somente local.
+
+Com isso, o trabalho previsto para o desafio está concluído. Ficam com o responsável: abrir e integrar a pull request do branch `20260930` para `master` e, se quiser o gate em CI, publicar o commit do workflow.
+
+---

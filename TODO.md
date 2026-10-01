@@ -44,7 +44,9 @@ Por fim, o usuário pediu a reorganização do acesso a dados em entidades e rep
 
 A forma de entrega foi definida: pull request do branch `20260930` para `master` (TODO-006).
 
-Próximos passos, dependentes do usuário: abrir e integrar a PR no GitHub e decidir o encerramento formal dos itens SEC que dependem de infraestrutura.
+Os itens SEC que dependem de infraestrutura foram encerrados como fora do escopo, conforme a seção "Encerramento do backlog de segurança".
+
+Próximos passos, dependentes do usuário: abrir e integrar a PR no GitHub e, se quiser o gate rodando em CI, publicar o commit do workflow com uma credencial que tenha o escopo `workflow`.
 
 ### Entrega C4 — limpeza, documentação, gate e commit funcional
 
@@ -422,6 +424,20 @@ Esta seção registra os achados da análise estática realizada no branch `2026
 
 Os itens abaixo não autorizam automaticamente alterações funcionais. Sua execução deverá respeitar dependências, decisões de arquitetura e autorização específica. A ausência de infraestrutura ou pipeline foi registrada como condição de avaliação, sem alegação de conformidade.
 
+### Encerramento do backlog de segurança — 1º de outubro de 2026
+
+Por decisão do usuário, os itens que dependem de infraestrutura que o desafio não define foram encerrados como fora do escopo, cada um com motivo e risco residual registrados no próprio item. Encerrar não significa atender: nenhum desses controles é alegado como implementado.
+
+| Situação | Itens |
+| --- | --- |
+| Concluídos | SEC-003, SEC-004, SEC-006, SEC-008, SEC-009, SEC-010, SEC-016, SEC-017, SEC-018 |
+| Concluídos no escopo do exercício, com ressalva para uso real | SEC-001 (emissor de teste), SEC-002, SEC-005 (`REAL` legado), SEC-013 |
+| Concluídos no escopo local, com a execução em pipeline dependente do workflow de CI | SEC-014, SEC-019, SEC-020 |
+| Encerrados como fora do escopo | SEC-007, SEC-011, SEC-012, SEC-021, SEC-022, SEC-023 |
+| Pendência conhecida, mantida em aberto | SEC-015 (eventos de inicialização e de validação estrutural, e associação a detecções) e a migração do pacote legado `MediatR.Extensions.Microsoft.DependencyInjection` |
+
+Todos os itens encerrados como fora do escopo devem ser reabertos antes de qualquer implantação real.
+
 ### SEC-001 — Definir e implementar autenticação da API
 
 - **Estado:** Implementado no escopo do exercício em 1º de outubro de 2026 — Entrega F1; a substituição do emissor de teste antes de implantação real permanece em aberto
@@ -529,7 +545,9 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-007 — Uniformizar o tipo da chave estrangeira de conta
 
-- **Estado:** Bloqueado — exige reconstrução da tabela `movimento` em migração própria, ainda não autorizada; SEC-003 e SEC-004, que a antecediam, estão concluídos
+- **Estado:** Encerrado como fora do escopo do exercício em 1º de outubro de 2026
+- **Motivo:** corrigir o tipo exige reconstruir a tabela `movimento`, que veio do proponente; as tabelas recebidas foram mantidas como estavam.
+- **Risco residual:** a coluna `movimento.idcontacorrente` continua declarada como `INTEGER(10)` apontando para uma chave `TEXT(37)`. O SQLite aceita o relacionamento por tipagem dinâmica, e a chave estrangeira está ativa e testada (SEC-006). Deve ser reaberto antes de qualquer migração para outro banco.
 - **Prioridade:** Média
 - **Referenciais:** CWE-20 e CWE-704; NIST SSDF PW.5
 - **Evidência:** `contacorrente.idcontacorrente` é `TEXT(37)`, enquanto `movimento.idcontacorrente` está declarado como `INTEGER(10)`.
@@ -593,7 +611,9 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-011 — Restringir hosts permitidos por ambiente
 
-- **Estado:** Bloqueado — depende da topologia de deploy
+- **Estado:** Encerrado como fora do escopo do exercício em 1º de outubro de 2026
+- **Motivo:** o desafio não define ambiente de implantação, domínio nem proxy.
+- **Risco residual:** `AllowedHosts` permanece `*`. No ambiente Docker Compose, as portas são publicadas somente em `127.0.0.1`. Deve ser reaberto antes de qualquer implantação real.
 - **Prioridade:** Média-baixa
 - **Referenciais:** OWASP API8; CIS Benchmark aplicável ao ambiente
 - **Evidência:** `AllowedHosts` está configurado como `*`.
@@ -607,7 +627,9 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-012 — Definir política TLS/HTTPS de produção
 
-- **Estado:** Bloqueado — depende da infraestrutura de deploy
+- **Estado:** Encerrado como fora do escopo do exercício em 1º de outubro de 2026
+- **Motivo:** o desafio não define ambiente de produção nem ponto de terminação TLS.
+- **Risco residual:** o ambiente Docker Compose usa HTTP, restrito ao loopback e à rede interna dos contêineres, como exceção documentada. Deve ser reaberto antes de qualquer implantação real.
 - **Prioridade:** Média
 - **Referenciais:** OWASP API8; CIS Benchmark aplicável; NIST SSDF PS.1
 - **Evidência:** a aplicação usa redirecionamento HTTPS, mas também escuta HTTP no perfil local e não existe topologia de produção definida.
@@ -622,7 +644,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-013 — Isolar o banco SQLite versionado
 
-- **Estado:** Em andamento — isolamento local concluído; backup e permissões dependem do deploy
+- **Estado:** Concluído no escopo do exercício — isolamento local e proteção da fixture concluídos; o critério de backup e permissões foi encerrado como fora do escopo em 1º de outubro de 2026, por depender de um ambiente de implantação que o desafio não define
 - **Prioridade:** Média
 - **Referenciais:** NIST SSDF PS.1; OpenSSF; proteção de dados e artefatos
 - **Evidência de origem:** `Questao5/database.sqlite` era usado como banco operacional e podia receber acidentalmente movimentos, chaves idempotentes ou respostas.
@@ -639,7 +661,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-014 — Ampliar prevenção contra commit de segredos e configurações locais
 
-- **Estado:** Em andamento — prevenção e scanner local concluídos; integração ao pipeline depende de SEC-021
+- **Estado:** Concluído no escopo local — prevenção e scanner local concluídos; a execução em pipeline depende da publicação do workflow de CI (ver SEC-021)
 - **Prioridade:** Média
 - **Referenciais:** NIST SSDF PS.1; OpenSSF; CWE-798
 - **Evidência de origem:** `.env`, `secrets.json`, `appsettings.Local.json` e outros arquivos locais sensíveis não eram ignorados.
@@ -721,7 +743,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-019 — Criar suíte de testes de segurança e regressão
 
-- **Estado:** Em andamento — fundação criada; cobertura funcional crescerá com cada item
+- **Estado:** Concluído no escopo local — suíte de 340 testes executada pelo gate; a execução automática em pipeline depende da publicação do workflow de CI (ver SEC-021)
 - **Prioridade:** Alta
 - **Referenciais:** NIST SSDF PW.7, PW.8 e RV.1; OpenSSF
 - **Evidência de origem:** não existia projeto ou suíte de testes no repositório.
@@ -751,7 +773,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-020 — Fortalecer gates de build e analisadores
 
-- **Estado:** Em andamento — gate local concluído; execução automática depende de SEC-021
+- **Estado:** Concluído no escopo local — gate local concluído; a execução automática depende da publicação do workflow de CI (ver SEC-021)
 - **Prioridade:** Média
 - **Referenciais:** NIST SSDF PW.7 e PW.8; OpenSSF
 - **Evidência de origem:** não estavam configurados explicitamente `TreatWarningsAsErrors`, nível de análise, restore locked no gate ou build contínuo determinístico.
@@ -767,7 +789,10 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-021 — Criar pipeline seguro e controles OpenSSF
 
-- **Estado:** Bloqueado — pipeline/plataforma ainda não definidos
+- **Estado:** Encerrado como fora do escopo do exercício em 1º de outubro de 2026, exceto a execução do gate em CI, que foi preparada e aguarda publicação
+- **Motivo:** release, SBOM, assinatura, proveniência, `SECURITY.md`, ownership e proteção de branch pressupõem um processo de publicação e uma equipe que o desafio não define. A proteção do branch principal, além disso, é configuração do repositório no GitHub, feita pelo responsável.
+- **Execução do gate em CI:** por decisão do usuário, foi escrito um workflow de GitHub Actions que roda o gate completo a cada push e a cada pull request para `master`, com as ações fixadas por commit, permissão somente de leitura e sem segredos. A publicação foi recusada pelo GitHub, porque a credencial do Git usada no push não tem o escopo `workflow`; essa restrição não foi contornada. O workflow ficou em um commit local, posterior a este, para o responsável publicar. Sua execução no GitHub não foi verificada.
+- **Risco residual:** enquanto o workflow não for publicado e validado, o gate depende de ser executado manualmente antes de cada entrega.
 - **Prioridade:** Alta antes de release ou deploy
 - **Referenciais:** OpenSSF, SLSA, Sigstore; NIST SSDF PO, PS, PW e RV
 - **Evidência:** não há CI/CD, `SECURITY.md`, `CODEOWNERS`, automação de atualização, SBOM, assinatura ou proveniência.
@@ -783,7 +808,10 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-022 — Aplicar CIS Benchmark ao ambiente de deploy
 
-- **Estado:** Parcialmente avaliável desde a Entrega G — existe ambiente Docker Compose de demonstração, com controles de contêiner aplicados; a avaliação formal contra o CIS Docker Benchmark não foi feita e não há ambiente de produção definido
+- **Estado:** Encerrado como fora do escopo do exercício em 1º de outubro de 2026
+- **Motivo:** não há ambiente de produção a endurecer; o Docker Compose é um ambiente de demonstração.
+- **O que foi feito mesmo assim:** contêineres sem privilégios, sistema de arquivos somente leitura, remoção de capabilities, `no-new-privileges` e imagens fixadas por digest.
+- **Risco residual:** a avaliação formal contra o CIS Docker Benchmark não foi feita. Deve ser reaberto quando houver ambiente de implantação.
 - **Prioridade:** Alta antes de produção
 - **Referenciais:** CIS Benchmarks e CIS Software Supply Chain Security Benchmarks
 - **Evidência:** não há Dockerfile, infraestrutura como código, configuração de servidor, reverse proxy ou ambiente de implantação no repositório.
@@ -798,7 +826,9 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-023 — Definir monitoramento e detecções orientados pelo MITRE ATT&CK
 
-- **Estado:** Bloqueado — depende do ambiente de observabilidade e dos eventos do SEC-015
+- **Estado:** Encerrado como fora do escopo do exercício em 1º de outubro de 2026
+- **Motivo:** não há ambiente de observabilidade, retenção de logs nem operação para a qual definir alertas.
+- **Risco residual:** os eventos estruturados existem e são testados (SEC-015), mas ninguém os monitora. Deve ser reaberto antes de qualquer implantação real.
 - **Prioridade:** Média; alta antes de produção
 - **Referenciais:** MITRE ATT&CK v19.2; NIST SSDF RV.1
 - **Evidência:** não existem retenção, alertas, métricas, dashboards, proteção de integridade ou validação de utilidade investigativa dos logs.
@@ -891,3 +921,4 @@ Estes itens são controles contínuos e não devem ser marcados globalmente como
 - **1º de outubro de 2026:** `README.md` reescrito para os avaliadores, com as instruções de execução e uso, o quadro de atendimento ao enunciado, a arquitetura em resumo e uma narrativa do desenvolvimento baseada em `CONVERSAS.md`: decisões, alternativas descartadas, ajustes de curso, erros encontrados e limitações. Nenhum código foi alterado; o gate completo foi aprovado com 294 testes.
 - **1º de outubro de 2026:** TODO-007 concluído a pedido do usuário. As controllers foram movidas para `Questao5/Controllers`. O acesso a dados foi reorganizado em uma entidade por tabela, um repositório de leitura e um de escrita por entidade, nas pastas `QueryStore` e `CommandStore`, e uma unidade de trabalho que mantém movimento, saldo e idempotência na mesma transação; os handlers passaram a orquestrar o caso de uso e os antigos stores foram removidos. Nenhum comportamento mudou: contrato HTTP, schema, mensagens e logs são os mesmos. A suíte passou de 294 para 340 testes, foi executada 20 vezes seguidas sem falha, e o gate completo foi aprovado; a fixture manteve o SHA-256 esperado.
 - **1º de outubro de 2026:** forma de entrega definida e TODO-006 concluído: pull request do branch `20260930` para `master`. O branch foi publicado pelo assistente após o gate completo (340 testes); a abertura e o merge da PR ficam com o usuário, no GitHub. Permanece em aberto apenas o encerramento formal dos itens SEC que dependem de infraestrutura.
+- **1º de outubro de 2026:** backlog de segurança encerrado por decisão do usuário. SEC-007, SEC-011, SEC-012, SEC-021, SEC-022 e SEC-023 foram encerrados como fora do escopo do exercício, com motivo e risco residual; SEC-013, SEC-014, SEC-019 e SEC-020 constam como concluídos no escopo do exercício ou local; SEC-015 e a migração do pacote legado permanecem como pendência conhecida. Foi escrito um workflow de GitHub Actions para rodar o gate, mas o push foi recusado por falta do escopo `workflow` na credencial; o workflow ficou em commit local para o responsável publicar, e sua execução não foi verificada. O gate completo foi aprovado com 340 testes.
