@@ -1,0 +1,5 @@
+root = true
+
+# Test names intentionally use Method_Scenario_ExpectedResult for readability.
+[Questao5.Tests/**/*.cs]
+dotnet_diagnostic.CA1707.severity = none

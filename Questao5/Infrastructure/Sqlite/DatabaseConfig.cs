@@ -1,9 +1,24 @@
-﻿namespace Questao5.Infrastructure.Sqlite
+﻿using Microsoft.Data.Sqlite;
+
+namespace Questao5.Infrastructure.Sqlite
 {
-    public class DatabaseConfig
+    public sealed class DatabaseConfig
     {
-#pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
-        public string Name { get; set; }
-#pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
+        public DatabaseConfig(string? name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                throw new ArgumentException("A configuração DatabaseName é obrigatória.", nameof(name));
+            }
+
+            var connectionStringBuilder = new SqliteConnectionStringBuilder(name)
+            {
+                ForeignKeys = true
+            };
+
+            Name = connectionStringBuilder.ToString();
+        }
+
+        public string Name { get; }
     }
 }
