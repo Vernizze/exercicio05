@@ -117,12 +117,13 @@ Essa falha pode afetar diretamente a disponibilidade da tabela `idempotencia`, a
 
 ### TODO-002 — Implementar idempotência no serviço de movimentação
 
-- **Estado:** Planejado — contrato e arquitetura fechados na Entrega B; implementação não iniciada
+- **Estado:** Em andamento — núcleo transacional C1 concluído; contrato HTTP, limites e observabilidade permanecem pendentes
 - **Prioridade:** Alta
-- **Bloqueador atual:** autorização expressa e específica para implementar a especificação aprovada
+- **Próxima etapa:** Entrega C2 — contrato HTTP e controles de entrada
 - **Dependência técnica:** TODO-001
 - **Estrutura de banco existente:** tabela `idempotencia`
 - **Especificação:** `ESPECIFICACAO_MOVIMENTACAO.md`
+- **Evidência C1:** comando e handler MediatR, normalização determinística, store SQLite com transação imediata, relógio e gerador de ID injetáveis e testes reais de atomicidade, repetição, conflito, rollback e concorrência.
 
 #### Problema
 
@@ -145,15 +146,15 @@ Portanto, a existência da tabela representa somente uma estrutura inicial; o co
 
 #### Critérios de aceite
 
-- [ ] Toda movimentação possui uma chave de idempotência obrigatória.
-- [ ] A primeira requisição válida gera exatamente um movimento.
-- [ ] A repetição da mesma requisição devolve o resultado originalmente armazenado.
-- [ ] A repetição não cria um segundo movimento.
-- [ ] A mesma chave não aceita silenciosamente uma requisição diferente.
-- [ ] O movimento e o resultado idempotente são persistidos atomicamente.
-- [ ] Requisições concorrentes com a mesma chave não geram duplicidade.
-- [ ] Falhas e rollbacks não deixam registros parciais.
-- [ ] Existem testes unitários e de integração para sucesso, repetição, conflito, concorrência e rollback.
+- [x] Toda movimentação no núcleo C1 possui uma chave de idempotência obrigatória e validada.
+- [x] A primeira requisição válida gera exatamente um movimento.
+- [x] A repetição da mesma requisição devolve o resultado originalmente armazenado.
+- [x] A repetição não cria um segundo movimento.
+- [x] A mesma chave não aceita silenciosamente uma requisição diferente.
+- [x] O movimento e o resultado idempotente são persistidos atomicamente.
+- [x] Requisições concorrentes com a mesma chave não geram duplicidade.
+- [x] Falhas e rollbacks não deixam registros parciais.
+- [x] Existem testes unitários e de integração para sucesso, repetição, conflito, concorrência e rollback no núcleo; os testes HTTP serão adicionados em C2.
 
 ---
 
@@ -227,11 +228,12 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-005 — Definir representação monetária determinística
 
-- **Estado:** Planejado — contrato da aplicação definido; implementação e mitigação do `REAL` pendentes
+- **Estado:** Em andamento — contrato `decimal` aplicado em C1; mitigação completa e saldo permanecem pendentes
 - **Prioridade:** Alta
 - **Referenciais:** CWE-682 e CWE-1339; NIST SSDF PW.4 e PW.5
 - **Evidência:** a coluna `movimento.valor` está declarada como `REAL`, tipo de ponto flutuante binário inadequado para precisão financeira sem estratégia adicional.
 - **Decisão da Entrega B:** contratos e cálculos usarão `decimal`, entradas aceitarão no máximo duas casas sem arredondamento implícito e o limite por movimento será `9999999999.99`. O `REAL` será preservado temporariamente apenas por compatibilidade; a migração permanece fora de TODO-002.
+- **Evidência C1:** `CreateMovementCommand` e a requisição normalizada usam `decimal`; escala maior que 2, valor não positivo e valor acima do limite são rejeitados; a representação canônica usa cultura invariável e duas casas; somente o adaptador SQLite converte para `REAL`.
 
 #### Critérios de aceite
 
@@ -243,7 +245,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-006 — Habilitar e testar integridade referencial SQLite
 
-- **Estado:** Em andamento — controle de conexão e banco concluído; validação da aplicação depende do endpoint de movimentação
+- **Estado:** Concluído no núcleo em 1º de outubro de 2026 — cobertura HTTP será adicionada em C2
 - **Prioridade:** Média
 - **Referenciais:** OWASP API8; CWE-20 e CWE-703
 - **Evidência de origem:** a string de conexão não habilitava explicitamente `Foreign Keys=True`; o comportamento efetivo dependia da conexão e da compilação da biblioteca nativa.
@@ -253,8 +255,8 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 - [x] Foreign keys são habilitadas explicitamente em toda conexão aplicável.
 - [x] O bootstrap valida o estado de `PRAGMA foreign_keys`.
-- [ ] Movimento associado a conta inexistente é rejeitado pelo banco e pela aplicação.
-- [x] Existe teste de integração para registro órfão no banco; a cobertura da camada de aplicação será adicionada com o endpoint.
+- [x] Movimento associado a conta inexistente é rejeitado pelo banco e pela aplicação.
+- [x] Existem testes de integração para registro órfão no banco e rejeição na camada de aplicação; a cobertura HTTP será adicionada com o endpoint.
 
 ### SEC-007 — Uniformizar o tipo da chave estrangeira de conta
 
@@ -416,6 +418,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - **Evidência de origem:** o endpoint de exemplo usava `DateTime.Now`; o contrato bancário ainda não define UTC, fuso ou formato.
 - **Evidência atual:** o uso residual foi substituído por `DateTime.UtcNow`; testes e novas persistências de teste usam `DateTimeOffset.UtcNow` e formato round-trip `O`.
 - **Decisão da Entrega B:** a movimentação obterá a data por relógio UTC injetável e persistirá `datamovimento` no formato legado `dd/MM/yyyy`, com cultura invariável. O formato externo e o fuso da futura consulta de saldo continuam pendentes.
+- **Evidência C1:** `MovementStore` usa `TimeProvider.GetUtcNow()` e cultura invariável; teste com relógio fixo comprova persistência determinística no formato legado.
 
 #### Critérios de aceite
 
@@ -445,6 +448,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - **Evidência de origem:** não existia projeto ou suíte de testes no repositório.
 - **Evidência atual:** `Questao5.Tests` usa lock file próprio, xUnit v3, Microsoft Testing Platform, NSubstitute, `WebApplicationFactory` e `coverlet.MTP`; 31 testes passam em Release. Há cobertura para configuração, banco temporário, bootstrap versionado e transacional, integridade referencial, hash da fixture, concorrência, rollback, correlação, validação, erro de negócio, exceção inesperada e logs sem dados sensíveis. A coleta em formato Cobertura permanece validada pelo gate local; os percentuais serão atualizados quando a próxima medição consolidada for registrada.
 - **Planejamento da Entrega B:** `ESPECIFICACAO_MOVIMENTACAO.md` define testes HTTP, monetários, transacionais, idempotentes, concorrentes, de conflito, rollback, abuso, cancelamento e conteúdo seguro dos logs que serão obrigatórios na implementação de TODO-002.
+- **Evidência C1:** a suíte passou a ter 55 testes, incluindo 28 casos focados no núcleo da movimentação para canonicalização, limites monetários, tipos, contas, persistência, repetição, conflito, rollback, cancelamento e concorrência idêntica ou conflitante.
 
 #### Critérios de aceite
 
@@ -580,3 +584,4 @@ Estes itens são controles contínuos e não devem ser marcados globalmente como
 - **30 de setembro de 2026:** análise estática do código atual convertida no backlog SEC-001 a SEC-023, com prioridades, referenciais, evidências, dependências, critérios de aceite, controles positivos e limitações de avaliação.
 - **1º de outubro de 2026:** TODO-001, SEC-003 e SEC-004 concluídos após autorização específica. O bootstrap SQLite tornou-se versionado, estrito, idempotente, atômico e seguro para inicializações concorrentes. O gate completo passou com 31 testes, zero warnings, zero erros, sem vulnerabilidades conhecidas ou segredos detectados; a fixture manteve o SHA-256 esperado.
 - **1º de outubro de 2026:** Entrega B concluída após autorização específica. O contrato HTTP, a regra monetária, a canonicalização idempotente, a transação concorrente, os limites, os eventos de log e a matriz de testes de TODO-002 foram definidos em `ESPECIFICACAO_MOVIMENTACAO.md`. TODO-002 passou de Bloqueado para Planejado, sem implementação funcional.
+- **1º de outubro de 2026:** Entrega C1 implementou o núcleo transacional e idempotente da movimentação com MediatR, Dapper e SQLite, sem endpoint HTTP. Testes cobrem regras, atomicidade, repetição, conflito, rollback, cancelamento e concorrência; TODO-002 passou a Em andamento, aguardando C2 e C3.

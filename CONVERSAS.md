@@ -476,3 +476,23 @@ O histórico do TODO passou a registrar que TODO-001 foi autorizado e concluído
 O gate completo da versão candidata ao commit concluiu restore bloqueado, auditoria direta e transitiva sem vulnerabilidades conhecidas, secret scanning sem achados, formatação aprovada, build Release determinístico com zero avisos e zero erros, 31 testes aprovados e coleta de cobertura.
 
 ---
+
+## Interação 019 — 1º de outubro de 2026
+
+**Modo: Act**
+
+### Usuário
+
+> Autorizou a Entrega C1: implementação do núcleo transacional e idempotente da movimentação, sem contrato HTTP, rate limiting ou observabilidade funcional.
+
+### Cline (assistente)
+
+Foram adicionados `CreateMovementCommand`, `CreateMovementResponse` e `CreateMovementCommandHandler`, mantendo MediatR já presente. `MovementRequestNormalizer` valida UUID da requisição, conta, valor positivo, limite de `9999999999.99`, escala máxima de duas casas e tipo estrito `C` ou `D`; produz chave UUID canônica e representação versionada, invariável e determinística.
+
+`MovementStore` concentra consulta idempotente, validação da conta e persistência em uma única conexão e transação SQLite imediata. Repetições idênticas recuperam o ID original antes de validar o estado mutável da conta; reutilizações conflitantes lançam `IdempotencyConflictException`; movimento e resultado idempotente são confirmados juntos. `TimeProvider` e `IMovementIdGenerator` permitem data UTC e IDs determinísticos em testes. O valor permanece `decimal` até o adaptador de persistência, onde é convertido para o `REAL` legado.
+
+Foram criados testes puros de normalização e testes reais com SQLite para crédito, débito, data invariável, conta inexistente ou inativa, primeira execução, repetição, repetição após desativação, conflito, rollback forçado por trigger, cancelamento e requisições concorrentes idênticas ou conflitantes. O primeiro ciclo revelou apenas que o SQLite materializava `ativo` como `Int64`; o tipo interno foi alinhado e os testes focados passaram em seguida.
+
+O build Release passou com zero avisos e zero erros, os 28 testes focados passaram e a suíte completa atingiu 55/55 testes aprovados. A verificação adicional de formatação em severidade informativa listou sugestões de estilo preexistentes e equivalentes nos novos arquivos, sem falha de compilação ou do gate obrigatório. C2 e C3 permanecem fora desta entrega.
+
+---

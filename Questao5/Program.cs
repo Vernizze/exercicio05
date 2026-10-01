@@ -1,8 +1,11 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
+using Questao5.Application.Movements;
+using Questao5.Infrastructure.Database.CommandStore;
 using Questao5.Infrastructure.Services.Correlation;
 using Questao5.Infrastructure.Services.Errors;
+using Questao5.Infrastructure.Services.Identifiers;
 using Questao5.Infrastructure.Sqlite;
 using System.Reflection;
 
@@ -42,6 +45,9 @@ builder.Services.AddProblemDetails(options =>
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 
 builder.Services.AddMediatR(Assembly.GetExecutingAssembly());
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<IMovementIdGenerator, GuidMovementIdGenerator>();
+builder.Services.AddSingleton<IMovementStore, MovementStore>();
 
 // sqlite
 builder.Services.AddSingleton(new DatabaseConfig(builder.Configuration["DatabaseName"]));
