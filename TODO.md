@@ -9,8 +9,9 @@ Os documentos do projeto possuem responsabilidades distintas e não constituem b
 - `TODO.md`: fonte canônica do escopo, estado atual, pendências, dependências e próximos passos;
 - `CONVERSAS.md`: evidência cronológica das solicitações, decisões e ações, sem substituir o estado consolidado deste TODO;
 - `ESPECIFICACAO_MOVIMENTACAO.md`: contrato técnico especializado da movimentação; divergências de estado devem ser reconciliadas neste TODO;
-- `ESPECIFICACAO_SALDO.md`: contrato técnico planejado da consulta de saldo; não autoriza implementação sem entrega específica;
-- `ESPECIFICACAO_AUTENTICACAO.md`: contrato técnico planejado da autenticação JWT e da titularidade de conta; não autoriza implementação sem entrega específica;
+- `ESPECIFICACAO_SALDO.md`: contrato técnico da consulta de saldo e da projeção persistida;
+- `ESPECIFICACAO_AUTENTICACAO.md`: contrato técnico da autenticação JWT, da titularidade de conta e do ambiente do desafio;
+- `README.md`: instruções de execução e uso para os avaliadores; não registra estado nem pendências;
 - `DIRETRIZES_SEGURANCA.md`: guardrails permanentes aplicáveis a cada mudança, não um cronograma paralelo;
 - `RELATORIO_SEGURANCA.md`: fotografia histórica encerrada em 30 de setembro de 2026; estados antigos nele preservados não representam o andamento corrente;
 - `Questao5/Questão 5.docx`: enunciado original e fonte de requisitos, não documento de controle.
@@ -31,9 +32,11 @@ Pendências acionáveis descobertas em qualquer especificação, relatório, dir
 | F1 | Concluída | Autenticação JWT na API. |
 | F2 | Concluída | Schema versão 2, titularidade, projeção de saldo e autorização na movimentação. |
 | E | Concluída | Implementar a consulta de saldo (E2 a E4), já com autorização por titular. |
-| G | Autorizada — próxima | Empacotamento com Dockerfile e Docker Compose, incluindo o emissor de teste. |
+| G | Concluída | Empacotamento com Dockerfile e Docker Compose, incluindo o emissor de teste. |
 
-A sequência F0, F1, F2, E e G foi autorizada pelo usuário em 1º de outubro de 2026 (Interação 033 de `CONVERSAS.md`). Cada entrega termina com o gate completo e um commit isolado.
+A sequência F0, F1, F2, E e G foi autorizada pelo usuário em 1º de outubro de 2026 (Interação 033 de `CONVERSAS.md`) e está concluída. Cada entrega terminou com o gate completo e um commit isolado.
+
+Próximos passos, todos dependentes de decisão do usuário: TODO-003 (códigos `INVALID_VALUE` e `INVALID_TYPE`, requisito do enunciado ainda não atendido), TODO-004 (documentação Swagger), TODO-005 (teste unitário do handler de movimentação), a forma de entrega de TODO-006 e o encerramento formal dos itens SEC que dependem de infraestrutura.
 
 ### Entrega C4 — limpeza, documentação, gate e commit funcional
 
@@ -155,18 +158,28 @@ A sequência F0, F1, F2, E e G foi autorizada pelo usuário em 1º de outubro de
 
 ### Entrega G — empacotamento com Docker Compose
 
-- **Estado:** Autorizada — depende de E
+- **Estado:** Concluída em 1º de outubro de 2026
 - **Especificação:** `ESPECIFICACAO_AUTENTICACAO.md`, seção 10
 - **Limite:** ambiente do desafio; não constitui pipeline de CI/CD nem ambiente de produção
+- **Evidência:** `Dockerfile` em dois estágios, `.dockerignore`, `docker-compose.yml`, `docker/mock-oauth2-server/config.json` e `README.md`. O ambiente foi construído, iniciado e exercitado de ponta a ponta nos dois endpoints, e depois removido.
 
 #### Critérios de aceite
 
-- [ ] Dockerfile da API com imagens fixadas por versão ou digest e execução sem privilégios.
-- [ ] `docker-compose.yml` com a API e o emissor `mock-oauth2-server`, imagem fixada e algoritmo de assinatura confirmado.
-- [ ] O emissor escrito no token coincide com `Jwt:Issuer` para a API e para o avaliador.
-- [ ] `Jwt:RequireHttpsMetadata=false` fica restrito ao ambiente do Compose e documentado como exceção.
-- [ ] Instruções para os avaliadores: subir o ambiente, obter token de cada correntista e chamar os dois endpoints.
-- [ ] Reavaliar SEC-011, SEC-012, SEC-021 e SEC-022 à luz do ambiente criado, registrando o que passa a ser avaliável e o que continua fora do escopo.
+- [x] Dockerfile da API com imagens fixadas por versão e digest, restore em modo bloqueado e execução sem privilégios (UID 1654).
+- [x] `docker-compose.yml` com a API e o emissor `mock-oauth2-server` 6.0.4, fixado por digest; algoritmo `RS256` confirmado na prática.
+- [x] O emissor escrito no token coincide com `Jwt:Issuer` para a API e para o avaliador, desde que o token seja pedido por `localhost`.
+- [x] `Jwt:RequireHttpsMetadata=false` fica restrito ao ambiente do Compose e à configuração de Development, documentado como exceção.
+- [x] Instruções para os avaliadores: subir o ambiente, obter token de cada correntista e chamar os dois endpoints.
+- [x] Reavaliar SEC-011, SEC-012, SEC-021 e SEC-022 à luz do ambiente criado, registrando o que passa a ser avaliável e o que continua fora do escopo.
+
+#### Reavaliação dos itens de infraestrutura
+
+O Compose é um ambiente de demonstração local, sem proxy, TLS, pipeline ou plataforma de implantação. Ele não muda o estado dos itens abaixo, mas adianta alguns controles:
+
+- **SEC-011 (hosts permitidos):** continua bloqueado; `AllowedHosts` permanece `*`. As portas publicadas somente em `127.0.0.1` reduzem a exposição neste ambiente.
+- **SEC-012 (TLS de produção):** continua bloqueado; o Compose usa HTTP em loopback e na rede interna, como exceção documentada.
+- **SEC-021 (pipeline seguro):** continua bloqueado; não há CI/CD. Ficam atendidos localmente a fixação de imagens por digest e o restore bloqueado dentro do build da imagem.
+- **SEC-022 (CIS Benchmark):** passa a ser parcialmente avaliável contra o CIS Docker Benchmark. Já aplicados: usuário sem privilégios, sistema de arquivos somente leitura, remoção de capabilities, `no-new-privileges` e imagens fixadas. A avaliação formal contra o benchmark e sua versão não foi feita e depende de decisão.
 
 ### Pendências identificadas em 1º de outubro de 2026 — sem autorização de execução
 
@@ -201,11 +214,12 @@ Achados do levantamento de fechamento de escopo (Interação 029 de `CONVERSAS.m
 
 #### TODO-006 — README e forma de entrega
 
-- **Estado:** Pendente — aguarda decisão
+- **Estado:** Parcialmente atendido na Entrega G — a forma de entrega aguarda decisão
 - **Prioridade:** Baixa
-- **Evidência:** não existe README com instruções de execução, e nenhum documento define como o trabalho é entregue (merge em `master`, tag ou pacote). As instruções de uso do ambiente Compose fazem parte da Entrega G.
+- **Evidência de origem:** não existia README com instruções de execução, e nenhum documento define como o trabalho é entregue (merge em `master`, tag ou pacote).
+- **Evidência G:** `README.md` descreve a execução com Docker Compose e sem Docker, a obtenção de token, as chamadas aos dois endpoints, os testes, o gate e a reconciliação.
 
-- [ ] Instruções de execução da API, dos testes e do gate.
+- [x] Instruções de execução da API, dos testes e do gate.
 - [ ] Forma de entrega definida.
 
 ## Regra de priorização
@@ -730,7 +744,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-022 — Aplicar CIS Benchmark ao ambiente de deploy
 
-- **Estado:** Não avaliável — infraestrutura ainda não definida
+- **Estado:** Parcialmente avaliável desde a Entrega G — existe ambiente Docker Compose de demonstração, com controles de contêiner aplicados; a avaliação formal contra o CIS Docker Benchmark não foi feita e não há ambiente de produção definido
 - **Prioridade:** Alta antes de produção
 - **Referenciais:** CIS Benchmarks e CIS Software Supply Chain Security Benchmarks
 - **Evidência:** não há Dockerfile, infraestrutura como código, configuração de servidor, reverse proxy ou ambiente de implantação no repositório.
@@ -832,3 +846,4 @@ Estes itens são controles contínuos e não devem ser marcados globalmente como
 - **1º de outubro de 2026:** Entrega F1 implementou a autenticação JWT: pacote `Microsoft.AspNetCore.Authentication.JwtBearer 10.0.12`, validação de assinatura, algoritmo, emissor, audiência, validade e `sub` UUID, política padrão de usuário autenticado, resposta 401 `UNAUTHENTICATED`, evento 5300 e esquema Bearer no OpenAPI. Foi corrigido um defeito preexistente pelo qual os testes HTTP gravavam em um banco compartilhado na pasta de saída do projeto de testes, e não no banco temporário isolado. A suíte passou de 80 para 106 testes e o gate completo foi aprovado.
 - **1º de outubro de 2026:** Entrega F2 migrou o schema para a versão 2, com `titularidade_conta` e `saldo_conta`, seed das seis titularidades e preenchimento da projeção. A movimentação passou a exigir que a conta pertença ao correntista do token, a atualizar o saldo consolidado na mesma transação, a usar idempotência `v2` amarrada ao correntista e a contar o limite específico por correntista; a negativa por titularidade responde `INVALID_ACCOUNT` e é registrada no evento 5301. Foi criada a reconciliação sob demanda (`--reconciliar-saldos`). A etapa E1 foi concluída dentro desta entrega. A suíte passou de 106 para 144 testes e o gate completo foi aprovado; a fixture manteve o SHA-256 esperado.
 - **1º de outubro de 2026:** Entrega E implementou a consulta de saldo `GET /api/v1/contas/{idContaCorrente}/saldo`, restrita ao titular da conta, lendo o saldo consolidado em centavos de `saldo_conta` em um único snapshot. A resposta traz número da conta, nome do titular, instante UTC em formato round-trip e saldo decimal, com `Cache-Control: no-store`; os erros seguem o contrato da movimentação. A consulta recebeu limites próprios por correntista, timeout e os eventos 5200–5203. O handler foi coberto por testes unitários com NSubstitute. SEC-002, SEC-005 e SEC-017 tiveram os critérios dependentes do saldo atendidos. A suíte passou de 144 para 211 testes e o gate completo foi aprovado; a fixture manteve o SHA-256 esperado. TODO-003, TODO-004 e TODO-006 permanecem pendentes de decisão.
+- **1º de outubro de 2026:** Entrega G empacotou o ambiente do desafio com `Dockerfile`, `docker-compose.yml` e o emissor de teste `mock-oauth2-server` 6.0.4, com imagens fixadas por digest, portas publicadas somente em `127.0.0.1`, contêineres sem privilégios e sistema de arquivos somente leitura. O ambiente foi verificado de ponta a ponta nos dois endpoints e removido. Foi criado o `README.md` para os avaliadores. SEC-011, SEC-012, SEC-021 e SEC-022 foram reavaliados; TODO-006 ficou parcialmente atendido. Nenhum código da aplicação foi alterado; o gate completo foi aprovado com 211 testes. A sequência F0, F1, F2, E e G está concluída.

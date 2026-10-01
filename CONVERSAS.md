@@ -899,4 +899,26 @@ Limitações registradas na especificação: a independência de fuso é verific
 
 O gate completo foi executado ao final e passou: restore bloqueado, auditoria direta e transitiva sem vulnerabilidades conhecidas, secret scanning sem achados, formatação e analisadores aprovados, build Release com zero avisos e zero erros, 211 testes aprovados e cobertura com nova execução em 211/211. A fixture `Questao5/database.sqlite` manteve o SHA-256 `E355A3EDB7D73E7784A7467513248D530C27CC989C624A35D13A188B2AA8DD3C`. A Entrega E foi encerrada em commit funcional isolado.
 
+#### Entrega G — empacotamento com Docker Compose
+
+A entrega partiu do commit `a9eca8e`, no branch `20260930`, com workspace limpo.
+
+**Emissor.** A imagem `ghcr.io/navikt/mock-oauth2-server:6.0.4` foi baixada e fixada por versão e digest. A 6.0.4 era a versão marcada como mais recente na página de releases do projeto; a data de publicação não pôde ser confirmada. Um contêiner descartável foi usado para conferir o comportamento antes de escrever a configuração: o documento de descoberta e o JWKS são publicados por emissor, o token é assinado com `RS256`, o campo `iss` reflete o endereço pelo qual o emissor foi chamado, a claim `sub` segue o mapeamento por `client_id` e um `client_id` não mapeado recebe token sem `sub` e sem audiência. O contêiner de sondagem foi removido.
+
+**Arquivos criados.** `Dockerfile` em dois estágios, com imagens do SDK 10.0.401 e do runtime ASP.NET 10.0.12 fixadas por digest, restore em modo bloqueado pela fonte NuGet autorizada e execução com o usuário sem privilégios da imagem; `.dockerignore`; `docker-compose.yml` com os serviços `api` e `auth`; `docker/mock-oauth2-server/config.json` com o mapeamento dos seis correntistas; e `README.md` com as instruções para os avaliadores.
+
+**Decisões do ambiente.** As portas da API (8080) e do emissor (8081) são publicadas somente em `127.0.0.1`, porque o emissor entrega tokens a quem o alcançar. Os dois contêineres rodam com sistema de arquivos somente leitura, sem capabilities e com `no-new-privileges`; o banco fica em volume nomeado. A API usa `Jwt:Issuer` igual a `http://localhost:8081/default`, endereço pelo qual o avaliador pede o token, e busca metadados e chaves pela rede interna, por HTTP, como exceção restrita a este ambiente. O Compose executa a API em `Development` para disponibilizar o Swagger.
+
+**Verificação de ponta a ponta.** O ambiente foi construído e iniciado, e os dois endpoints foram chamados com tokens reais do emissor: saldo inicial `0.00`; crédito de 125,50; repetição idêntica com o mesmo `idMovimento`; mesma chave com outro valor respondendo 409; débito de 25,25; saldo final `100.25`; 401 sem token e com `client_id` não mapeado; conta de outro correntista respondendo `INVALID_ACCOUNT`, idêntico a conta inexistente; conta própria inativa respondendo `INACTIVE_ACCOUNT`; Swagger acessível. Os logs do contêiner mostraram os eventos 5100, 5101, 5102, 5200, 5201, 5300 e 5301 com fingerprints, sem conta ou correntista em claro. Também foram conferidos: o processo roda com UID 1654; o saldo persiste após reinício da API; a reconciliação dentro do contêiner não aponta divergência; e um token pedido por `127.0.0.1` em vez de `localhost` é rejeitado, o que foi documentado no README. Ao final, o ambiente foi removido com seus volumes.
+
+**Documentação.** A seção 10.3 de `ESPECIFICACAO_AUTENTICACAO.md` passou a descrever o que foi implementado; `DIRETRIZES_SEGURANCA.md` deixou de tratar os endpoints como anônimos; e `TODO.md` registra a conclusão, a reavaliação de SEC-011, SEC-012, SEC-021 e SEC-022 e o atendimento parcial de TODO-006. O README registra, como limitação conhecida, que `INVALID_VALUE` e `INVALID_TYPE` ainda não chegam ao cliente (TODO-003).
+
+Nenhum código-fonte da aplicação ou teste foi alterado nesta entrega. O gate completo foi executado ao final e passou: restore bloqueado, auditoria direta e transitiva sem vulnerabilidades conhecidas, secret scanning sem achados, formatação e analisadores aprovados, build Release com zero avisos e zero erros, 211 testes aprovados e cobertura com nova execução em 211/211. A fixture `Questao5/database.sqlite` manteve o SHA-256 `E355A3EDB7D73E7784A7467513248D530C27CC989C624A35D13A188B2AA8DD3C`. A Entrega G foi encerrada em commit isolado.
+
+#### Encerramento da sequência
+
+Com a Entrega G, a sequência autorizada nesta interação está concluída: F0 (`2e011ee`), F1 (`ac90297`), F2 (`4b19ac8`), E (`a9eca8e`) e G. Os commits são locais, no branch `20260930`; nada foi enviado a repositório remoto nem integrado a `master`.
+
+Permanecem pendentes de decisão do usuário: TODO-003, que é requisito do enunciado; TODO-004 e a parte de TODO-005 referente ao handler de movimentação, que são pontos extras; a forma de entrega (TODO-006); e o encerramento formal dos itens de segurança que dependem de infraestrutura.
+
 ---

@@ -1,0 +1,53 @@
+# Ambiente do desafio técnico: API + emissor de tokens de TESTE.
+# Não é um ambiente de produção: o emissor entrega token de qualquer correntista a quem o alcançar.
+# Por isso as portas são publicadas somente em 127.0.0.1.
+
+name: questao5
+
+services:
+  auth:
+    # mock-oauth2-server: ferramenta de teste, fixada por versão e digest.
+    image: ghcr.io/navikt/mock-oauth2-server:6.0.4@sha256:47374fe063995d9b6d39ebb6ea21eb5f765025bf0aa08b61b08b439eb91adaf0
+    environment:
+      JSON_CONFIG_PATH: /config/config.json
+    volumes:
+      - ./docker/mock-oauth2-server/config.json:/config/config.json:ro
+    ports:
+      - "127.0.0.1:8081:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  api:
+    build:
+      context: .
+    image: questao5-api:local
+    depends_on:
+      - auth
+    environment:
+      # Development habilita o Swagger para os avaliadores.
+      ASPNETCORE_ENVIRONMENT: Development
+      # A API busca as chaves do emissor pela rede interna do Compose, sem TLS (exceção restrita a este ambiente).
+      Jwt__MetadataAddress: http://auth:8080/default/.well-known/openid-configuration
+      Jwt__RequireHttpsMetadata: "false"
+      # O emissor escreve em "iss" o endereço pelo qual o token foi pedido; o avaliador pede por localhost:8081.
+      Jwt__Issuer: http://localhost:8081/default
+      Jwt__Audience: questao5-api
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - api-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  api-data:

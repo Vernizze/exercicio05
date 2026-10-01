@@ -4,7 +4,7 @@
 
 Este documento consolida a Entrega F0, realizada em 1º de outubro de 2026, e define o contrato e o desenho técnico da autenticação por JWT e da autorização por titular da conta. A entrega é exclusivamente de planejamento: nenhum pacote, middleware, tabela, migração, configuração ou teste executável de autenticação foi implementado nela.
 
-Estado de implementação: a Entrega F1, concluída em 1º de outubro de 2026, implementou a autenticação descrita nas seções 5, 6.3 (resposta 401), 9 (evento 5300) e 11 (testes de autenticação). A Entrega F2, concluída na mesma data, implementou o vínculo conta–correntista e a migração (seção 4), a autorização por titular na movimentação (seção 6), a idempotência `v2` (seção 7), o limite específico por correntista (seção 8) e o evento 5301 (seção 9). A Entrega E aplicou a mesma regra de titularidade à consulta de saldo e passou a contar o limite específico do saldo por correntista. Resta o empacotamento da seção 10, previsto para a Entrega G.
+Estado de implementação: a Entrega F1, concluída em 1º de outubro de 2026, implementou a autenticação descrita nas seções 5, 6.3 (resposta 401), 9 (evento 5300) e 11 (testes de autenticação). A Entrega F2, concluída na mesma data, implementou o vínculo conta–correntista e a migração (seção 4), a autorização por titular na movimentação (seção 6), a idempotência `v2` (seção 7), o limite específico por correntista (seção 8) e o evento 5301 (seção 9). A Entrega E aplicou a mesma regra de titularidade à consulta de saldo e passou a contar o limite específico do saldo por correntista. A Entrega G concluiu o empacotamento da seção 10. Com isso, toda esta especificação está implementada.
 
 A decisão substitui a exceção registrada anteriormente em `DIRETRIZES_SEGURANCA.md`, segundo a qual o exercício permaneceria anônimo. SEC-001 e SEC-002 deixam de ser riscos aceitos e passam a ser itens em andamento.
 
@@ -122,7 +122,7 @@ A configuração fica na seção `Jwt`:
 
 Ausência ou valor inválido de `MetadataAddress`, `Issuer` ou `Audience` impede a inicialização. Nenhum segredo de autenticação é versionado: a API usa apenas chaves públicas do emissor.
 
-`appsettings.json` não define a seção `Jwt`. `appsettings.Development.json` aponta para o emissor local previsto para o ambiente do desafio (`http://localhost:8081/default`, audiência `questao5-api`), com `RequireHttpsMetadata=false`; esses valores serão confirmados na Entrega G. O documento de descoberta é buscado somente na primeira validação de token, de modo que a API inicia mesmo com o emissor indisponível e responde 401 enquanto ele não estiver acessível.
+`appsettings.json` não define a seção `Jwt`. `appsettings.Development.json` aponta para o emissor local do ambiente do desafio (`http://localhost:8081/default`, audiência `questao5-api`), com `RequireHttpsMetadata=false`; esses valores foram confirmados na Entrega G. O documento de descoberta é buscado somente na primeira validação de token, de modo que a API inicia mesmo com o emissor indisponível e responde 401 enquanto ele não estiver acessível.
 
 ### 5.4 Dependência
 
@@ -213,12 +213,21 @@ O emissor escolhido é uma ferramenta de teste e **não autentica pessoas**: que
 - o emissor de teste não pode ser usado em ambiente real;
 - a troca por um provedor real exige apenas reconfigurar a seção `Jwt`, sem mudança de código.
 
-### 10.3 Pontos a resolver na entrega de empacotamento
+### 10.3 Como foi implementado na Entrega G
 
-- fixar a imagem por versão ou digest e confirmar o algoritmo de assinatura;
-- garantir que o emissor escrito no token coincida com `Jwt:Issuer` tanto para a API, que alcança o emissor pela rede interna do Compose, quanto para o avaliador, que o alcança por `localhost`;
-- registrar `Jwt:RequireHttpsMetadata=false` como exceção restrita à rede interna do Compose;
-- documentar para os avaliadores como obter um token de cada correntista.
+Os pontos deixados em aberto no planejamento foram resolvidos assim:
+
+- **Imagem:** `ghcr.io/navikt/mock-oauth2-server:6.0.4`, fixada também por digest em `docker-compose.yml`. A versão 6.0.4 era a marcada como mais recente na página de releases do projeto em 1º de outubro de 2026; a data de publicação não pôde ser confirmada.
+- **Algoritmo:** confirmado na prática como `RS256`, com chave publicada em `/default/jwks`; coincide com a lista fechada da API.
+- **Identidade:** `docker/mock-oauth2-server/config.json` mapeia o parâmetro `client_id` de cada correntista (`katherine`, `eva`, `tevin`, `ameena`, `jarrad`, `elisha`) para a claim `sub` correspondente e para a audiência `questao5-api`, com validade de 15 minutos. Um `client_id` não mapeado recebe token sem `sub` e sem audiência, que a API rejeita com 401.
+- **Emissor do token:** o emissor grava em `iss` o endereço pelo qual foi chamado. O avaliador pede o token em `http://localhost:8081/default`, valor configurado em `Jwt:Issuer`; a API busca os metadados e as chaves pela rede interna, em `http://auth:8080/default`. Um token pedido por `127.0.0.1` em vez de `localhost` é rejeitado, comportamento verificado e documentado no `README.md`.
+- **HTTP entre contêineres:** `Jwt:RequireHttpsMetadata=false` é definido somente no `docker-compose.yml` e em `appsettings.Development.json`; o valor padrão do código continua exigindo HTTPS.
+- **Exposição:** as portas da API (8080) e do emissor (8081) são publicadas somente em `127.0.0.1`, porque o emissor entrega tokens a quem o alcançar.
+- **Contêineres:** a API é construída por `Dockerfile` em dois estágios, com imagens-base fixadas por versão e digest, restore em modo bloqueado, execução com o usuário sem privilégios da imagem (UID 1654), sistema de arquivos somente leitura, sem capabilities e com `no-new-privileges`; o banco fica em um volume nomeado montado em `/data`. O emissor roda com as mesmas restrições.
+- **Ambiente:** o Compose executa a API em `Development` para que o Swagger fique disponível aos avaliadores.
+- **Instruções:** `README.md` descreve como subir o ambiente, obter o token de cada correntista e chamar os dois endpoints.
+
+O ambiente foi verificado de ponta a ponta em 1º de outubro de 2026: obtenção de token, crédito, repetição idempotente, conflito de chave, débito, saldo, 401 sem token e com `client_id` não mapeado, conta de outro correntista e conta própria inativa, persistência do saldo após reinício da API e reconciliação dentro do contêiner.
 
 ## 11. Matriz de testes planejada
 
@@ -282,6 +291,6 @@ Os testes automatizados não dependem do contêiner do emissor: usam uma chave d
 | F1 (concluída) | Autenticação JWT na API: pacote, validação, política padrão, resposta 401, evento 5300 e testes com chave local. |
 | F2 (concluída) | Schema versão 2 (`titularidade_conta` e `saldo_conta`), manutenção da projeção de saldo, autorização por titular na movimentação, idempotência `v2`, limites por correntista e evento 5301. |
 | E2–E4 (concluída) | Consulta de saldo já com autorização por titular, conforme `ESPECIFICACAO_SALDO.md`. |
-| G | Empacotamento com Dockerfile e Docker Compose, incluindo o emissor de teste e as instruções para os avaliadores. |
+| G (concluída) | Empacotamento com Dockerfile e Docker Compose, incluindo o emissor de teste e as instruções para os avaliadores. |
 
 Cada entrega termina com o gate completo e um commit isolado. Mudanças futuras de claim, emissor, regra de titularidade ou resposta de erro devem atualizar este documento antes do código.

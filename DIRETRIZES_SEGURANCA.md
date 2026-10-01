@@ -15,7 +15,7 @@ As referências abaixo serão usadas como guias de engenharia e critérios de re
 
 ## Autenticação e autorização neste desafio
 
-Até 1º de outubro de 2026 vigorou uma exceção de escopo segundo a qual o exercício não teria autenticação nem autorização por titular. Essa exceção foi **revogada** nessa data por decisão do responsável pelo projeto. Enquanto as entregas F1 e F2 não forem concluídas, os endpoints existentes continuam tecnicamente anônimos; esse estado é transitório e não é mais um risco aceito.
+Até 1º de outubro de 2026 vigorou uma exceção de escopo segundo a qual o exercício não teria autenticação nem autorização por titular. Essa exceção foi **revogada** nessa data por decisão do responsável pelo projeto, e a autenticação e a autorização por titular foram implementadas no mesmo dia pelas entregas F1, F2 e E.
 
 O desenho vigente está em `ESPECIFICACAO_AUTENTICACAO.md`:
 
@@ -25,7 +25,7 @@ O desenho vigente está em `ESPECIFICACAO_AUTENTICACAO.md`:
 - respostas devem reduzir enumeração: conta de outro correntista recebe a mesma resposta de conta não cadastrada;
 - TLS, rate limiting, limites de payload, idempotência, logs e correlação permanecem controles obrigatórios.
 
-Limitação aceita exclusivamente para a avaliação técnica: o emissor usado no ambiente do desafio é uma ferramenta de teste que não autentica pessoas. Ele não poderá ser usado em ambiente real, e a adoção de um provedor real deverá passar por nova análise de risco. A existência de autenticação neste desafio não caracteriza, por si só, conformidade com OWASP API1, API2 ou API5, nem com CWE-306, CWE-639 ou CWE-862.
+Limitação aceita exclusivamente para a avaliação técnica: o emissor usado no ambiente do desafio é uma ferramenta de teste que não autentica pessoas. No ambiente Docker Compose, suas portas e as da API são publicadas somente em `127.0.0.1`, e a busca de chaves sem TLS é restrita à rede interna do Compose. Ele não poderá ser usado em ambiente real, e a adoção de um provedor real deverá passar por nova análise de risco. A existência de autenticação neste desafio não caracteriza, por si só, conformidade com OWASP API1, API2 ou API5, nem com CWE-306, CWE-639 ou CWE-862.
 
 ## Referenciais adotados
 

@@ -1,0 +1,19 @@
+# O contexto de build só precisa dos fontes da API e dos arquivos de configuração da raiz.
+.git/
+.vs/
+.claude/
+.data/
+**/.data/
+**/bin/
+**/obj/
+Questao5.Tests/
+docker/
+scripts/
+*.md
+*.docx
+**/*.docx
+*.sqlite
+**/*.sqlite
+docker-compose.yml
+Dockerfile
+.dockerignore
