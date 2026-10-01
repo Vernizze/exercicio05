@@ -5,16 +5,16 @@ namespace Questao5.Infrastructure.Sqlite
 {
     public sealed class DatabaseBootstrap : IDatabaseBootstrap
     {
-        private const int CurrentSchemaVersion = 1;
+        private const int CurrentSchemaVersion = 2;
 
         private static readonly AccountSeed[] AccountSeeds =
         [
-            new("B6BAFC09 -6967-ED11-A567-055DFA4A16C9", 123, "Katherine Sanchez", 1),
-            new("FA99D033-7067-ED11-96C6-7C5DFA4A16C9", 456, "Eva Woodward", 1),
-            new("382D323D-7067-ED11-8866-7D5DFA4A16C9", 789, "Tevin Mcconnell", 1),
-            new("F475F943-7067-ED11-A06B-7E5DFA4A16C9", 741, "Ameena Lynn", 0),
-            new("BCDACA4A-7067-ED11-AF81-825DFA4A16C9", 852, "Jarrad Mckee", 0),
-            new("D2E02051-7067-ED11-94C0-835DFA4A16C9", 963, "Elisha Simons", 0)
+            new("B6BAFC09 -6967-ED11-A567-055DFA4A16C9", 123, "Katherine Sanchez", 1, "7d85c0f1-c90c-49e6-a2c7-0fb988c3d943"),
+            new("FA99D033-7067-ED11-96C6-7C5DFA4A16C9", 456, "Eva Woodward", 1, "04b276dc-0f45-4efc-bffc-911110198733"),
+            new("382D323D-7067-ED11-8866-7D5DFA4A16C9", 789, "Tevin Mcconnell", 1, "06dc3a47-fb77-4589-9e18-076f3860d1d2"),
+            new("F475F943-7067-ED11-A06B-7E5DFA4A16C9", 741, "Ameena Lynn", 0, "cf18e8e5-35f2-498d-a77d-4dd6828316d4"),
+            new("BCDACA4A-7067-ED11-AF81-825DFA4A16C9", 852, "Jarrad Mckee", 0, "dbb66add-5f1c-412e-9917-ac6048ea22da"),
+            new("D2E02051-7067-ED11-94C0-835DFA4A16C9", 963, "Elisha Simons", 0, "3d03eefd-9941-44c8-b6bb-5644eff438e8")
         ];
 
         private readonly ISqliteConnectionFactory connectionFactory;
@@ -41,6 +41,14 @@ namespace Questao5.Infrastructure.Sqlite
 
             EnsureSchema(connection, transaction);
             SeedAccounts(connection, transaction);
+            SeedAccountHolders(connection, transaction);
+            BalanceProjection.Backfill(connection, transaction);
+
+            if (schemaVersion < CurrentSchemaVersion)
+            {
+                ValidateBalanceReconciliation(connection, transaction);
+            }
+
             ValidateDatabaseIntegrity(connection, transaction);
 
             connection.Execute(
@@ -96,6 +104,33 @@ namespace Questao5.Infrastructure.Sqlite
                 );
                 """);
             SqliteSchemaValidator.ValidateIdempotencyTable(connection, transaction);
+
+            EnsureTable(
+                connection,
+                transaction,
+                "titularidade_conta",
+                """
+                CREATE TABLE IF NOT EXISTS titularidade_conta (
+                    idcontacorrente TEXT(37) PRIMARY KEY,
+                    idcorrentista TEXT(36) NOT NULL,
+                    FOREIGN KEY(idcontacorrente) REFERENCES contacorrente(idcontacorrente)
+                );
+                """);
+            SqliteSchemaValidator.ValidateAccountHolderTable(connection, transaction);
+
+            EnsureTable(
+                connection,
+                transaction,
+                "saldo_conta",
+                """
+                CREATE TABLE IF NOT EXISTS saldo_conta (
+                    idcontacorrente TEXT(37) PRIMARY KEY,
+                    saldo_centavos INTEGER NOT NULL,
+                    versao INTEGER NOT NULL,
+                    FOREIGN KEY(idcontacorrente) REFERENCES contacorrente(idcontacorrente)
+                );
+                """);
+            SqliteSchemaValidator.ValidateBalanceTable(connection, transaction);
         }
 
         private static void EnsureTable(
@@ -131,6 +166,33 @@ namespace Questao5.Infrastructure.Sqlite
             }
         }
 
+        private static void SeedAccountHolders(SqliteConnection connection, SqliteTransaction transaction)
+        {
+            const string sql = """
+                INSERT INTO titularidade_conta(idcontacorrente, idcorrentista)
+                SELECT idcontacorrente, @HolderId
+                FROM contacorrente
+                WHERE idcontacorrente = @Id
+                ON CONFLICT(idcontacorrente) DO NOTHING;
+                """;
+
+            foreach (var account in AccountSeeds)
+            {
+                connection.Execute(sql, account, transaction);
+            }
+        }
+
+        private static void ValidateBalanceReconciliation(
+            SqliteConnection connection,
+            SqliteTransaction transaction)
+        {
+            if (BalanceProjection.FindDivergentAccounts(connection, transaction).Count > 0)
+            {
+                throw new InvalidDatabaseSchemaException(
+                    "A projeção de saldo diverge dos movimentos persistidos.");
+            }
+        }
+
         private static void ValidateDatabaseIntegrity(
             SqliteConnection connection,
             SqliteTransaction transaction)
@@ -155,6 +217,6 @@ namespace Questao5.Infrastructure.Sqlite
             }
         }
 
-        private sealed record AccountSeed(string Id, int Number, string Name, int Active);
+        private sealed record AccountSeed(string Id, int Number, string Name, int Active, string HolderId);
     }
 }

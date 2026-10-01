@@ -1,5 +1,4 @@
-﻿using System.Security.Cryptography;
-using System.Text;
+using Questao5.Infrastructure.Services.Security;
 
 namespace Questao5.Infrastructure.Services.Movements
 {
@@ -7,10 +6,7 @@ namespace Questao5.Infrastructure.Services.Movements
     {
         public static string Create(string normalizedRequestId)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(normalizedRequestId);
-
-            var hash = SHA256.HashData(Encoding.UTF8.GetBytes(normalizedRequestId));
-            return Convert.ToHexString(hash)[..16];
+            return SecurityFingerprint.Create(normalizedRequestId);
         }
     }
 }

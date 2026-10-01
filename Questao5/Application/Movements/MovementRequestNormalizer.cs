@@ -19,6 +19,14 @@ namespace Questao5.Application.Movements
                     "A identificação da requisição deve ser um UUID válido.");
             }
 
+            // O titular vem do token já validado; um valor inválido aqui é falha de integração, não de negócio.
+            if (!Guid.TryParseExact(command.AccountHolderId, "D", out var accountHolderId))
+            {
+                throw new ArgumentException(
+                    "A identificação do correntista deve ser um UUID válido.",
+                    nameof(command));
+            }
+
             var accountId = command.AccountId?.Trim();
 
             if (string.IsNullOrEmpty(accountId) || accountId.Length > 37)
@@ -45,13 +53,15 @@ namespace Questao5.Application.Movements
             }
 
             var normalizedRequestId = requestId.ToString("D");
+            var normalizedAccountHolderId = accountHolderId.ToString("D");
             var normalizedAccountId = accountId.ToUpperInvariant();
             var canonicalRequest = string.Create(
                 CultureInfo.InvariantCulture,
-                $"v1|conta={normalizedAccountId}|valor={command.Amount:F2}|tipo={command.MovementType}");
+                $"v2|titular={normalizedAccountHolderId}|conta={normalizedAccountId}|valor={command.Amount:F2}|tipo={command.MovementType}");
 
             return new NormalizedMovementRequest(
                 normalizedRequestId,
+                normalizedAccountHolderId,
                 normalizedAccountId,
                 command.Amount,
                 command.MovementType[0],
@@ -66,6 +76,7 @@ namespace Questao5.Application.Movements
 
     public sealed record NormalizedMovementRequest(
         string RequestId,
+        string AccountHolderId,
         string AccountId,
         decimal Amount,
         char MovementType,

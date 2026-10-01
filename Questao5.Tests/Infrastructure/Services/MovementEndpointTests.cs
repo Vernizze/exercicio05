@@ -110,14 +110,15 @@ public sealed class MovementEndpointTests
     }
 
     [Theory]
-    [InlineData("missing-account", "INVALID_ACCOUNT")]
-    [InlineData("F475F943-7067-ED11-A06B-7E5DFA4A16C9", "INACTIVE_ACCOUNT")]
+    [InlineData("missing-account", TestTokenIssuer.DefaultSubject, "INVALID_ACCOUNT")]
+    [InlineData("F475F943-7067-ED11-A06B-7E5DFA4A16C9", "cf18e8e5-35f2-498d-a77d-4dd6828316d4", "INACTIVE_ACCOUNT")]
     public async Task Create_InvalidAccount_ReturnsCorrelatedBusinessProblemDetails(
         string accountId,
+        string subject,
         string expectedCode)
     {
         using var factory = new SecurityWebApplicationFactory();
-        using var client = CreateClient(factory);
+        using var client = factory.CreateAuthenticatedClient(subject);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/movimentos",

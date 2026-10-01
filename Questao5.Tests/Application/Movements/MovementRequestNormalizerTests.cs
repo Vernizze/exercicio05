@@ -11,6 +11,7 @@ public sealed class MovementRequestNormalizerTests
     {
         var command = new CreateMovementCommand(
             " D743ABE7-40ED-4A7D-B0A5-8F876E916A07 ",
+            "04B276DC-0F45-4EFC-BFFC-911110198733",
             " fa99d033-7067-ed11-96c6-7c5dfa4a16c9 ",
             125.5m,
             "C");
@@ -18,11 +19,12 @@ public sealed class MovementRequestNormalizerTests
         var result = MovementRequestNormalizer.Normalize(command);
 
         Assert.Equal("d743abe7-40ed-4a7d-b0a5-8f876e916a07", result.RequestId);
+        Assert.Equal("04b276dc-0f45-4efc-bffc-911110198733", result.AccountHolderId);
         Assert.Equal("FA99D033-7067-ED11-96C6-7C5DFA4A16C9", result.AccountId);
         Assert.Equal(125.5m, result.Amount);
         Assert.Equal('C', result.MovementType);
         Assert.Equal(
-            "v1|conta=FA99D033-7067-ED11-96C6-7C5DFA4A16C9|valor=125.50|tipo=C",
+            "v2|titular=04b276dc-0f45-4efc-bffc-911110198733|conta=FA99D033-7067-ED11-96C6-7C5DFA4A16C9|valor=125.50|tipo=C",
             result.CanonicalRequest);
     }
 
@@ -72,6 +74,26 @@ public sealed class MovementRequestNormalizerTests
         Assert.Equal("INVALID_REQUEST_ID", exception.Code);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("eva.woodward")]
+    [InlineData("04b276dc0f454efcbffc911110198733")]
+    public void Normalize_InvalidAccountHolder_ThrowsArgumentException(string accountHolderId)
+    {
+        Assert.Throws<ArgumentException>(() =>
+            MovementRequestNormalizer.Normalize(CreateCommand(accountHolderId: accountHolderId)));
+    }
+
+    [Fact]
+    public void Normalize_DifferentAccountHolders_ProduceDifferentCanonicalRequests()
+    {
+        var first = MovementRequestNormalizer.Normalize(CreateCommand());
+        var second = MovementRequestNormalizer.Normalize(
+            CreateCommand(accountHolderId: "06dc3a47-fb77-4589-9e18-076f3860d1d2"));
+
+        Assert.NotEqual(first.CanonicalRequest, second.CanonicalRequest);
+    }
+
     [Fact]
     public void Normalize_AccountLongerThanSchemaLimit_ThrowsInvalidAccount()
     {
@@ -85,8 +107,9 @@ public sealed class MovementRequestNormalizerTests
         string requestId = "d743abe7-40ed-4a7d-b0a5-8f876e916a07",
         string accountId = "FA99D033-7067-ED11-96C6-7C5DFA4A16C9",
         decimal amount = 10.25m,
-        string movementType = "C")
+        string movementType = "C",
+        string accountHolderId = "04b276dc-0f45-4efc-bffc-911110198733")
     {
-        return new CreateMovementCommand(requestId, accountId, amount, movementType);
+        return new CreateMovementCommand(requestId, accountHolderId, accountId, amount, movementType);
     }
 }

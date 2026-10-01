@@ -8,6 +8,15 @@ public sealed class DatabaseBootstrapTests
 {
     private const int ExpectedSeedCount = 6;
 
+    private static readonly string[] ExpectedTables =
+    [
+        "contacorrente",
+        "idempotencia",
+        "movimento",
+        "saldo_conta",
+        "titularidade_conta"
+    ];
+
     private const string CreateAccountTableSql = """
         CREATE TABLE contacorrente (
             idcontacorrente TEXT(37) PRIMARY KEY,
@@ -39,9 +48,9 @@ public sealed class DatabaseBootstrapTests
         bootstrap.Setup();
 
         using var connection = connectionFactory.OpenConnection();
-        Assert.Equal(["contacorrente", "idempotencia", "movimento"], GetApplicationTables(connection));
+        Assert.Equal(ExpectedTables, GetApplicationTables(connection));
         Assert.Equal(ExpectedSeedCount, CountAccounts(connection));
-        Assert.Equal(1, connection.ExecuteScalar<int>("PRAGMA user_version;"));
+        Assert.Equal(2, connection.ExecuteScalar<int>("PRAGMA user_version;"));
         Assert.Empty(connection.Query("PRAGMA foreign_key_check;"));
         Assert.Equal("ok", connection.QuerySingle<string>("PRAGMA integrity_check;"));
     }
@@ -65,7 +74,7 @@ public sealed class DatabaseBootstrapTests
         bootstrap.Setup();
 
         using var verificationConnection = connectionFactory.OpenConnection();
-        Assert.Equal(["contacorrente", "idempotencia", "movimento"], GetApplicationTables(verificationConnection));
+        Assert.Equal(ExpectedTables, GetApplicationTables(verificationConnection));
         Assert.Equal(ExpectedSeedCount + 1, CountAccounts(verificationConnection));
         Assert.Equal(
             "Conta preservada",
@@ -242,7 +251,7 @@ public sealed class DatabaseBootstrapTests
         bootstrap.Setup();
 
         using var verificationConnection = connectionFactory.OpenConnection();
-        Assert.Equal(["contacorrente", "idempotencia", "movimento"], GetApplicationTables(verificationConnection));
+        Assert.Equal(ExpectedTables, GetApplicationTables(verificationConnection));
         Assert.Equal(ExpectedSeedCount, CountAccounts(verificationConnection));
     }
 
@@ -254,14 +263,14 @@ public sealed class DatabaseBootstrapTests
 
         using (var connection = connectionFactory.OpenConnection())
         {
-            connection.Execute("PRAGMA user_version = 2;");
+            connection.Execute("PRAGMA user_version = 3;");
         }
 
         var exception = Assert.Throws<InvalidDatabaseSchemaException>(bootstrap.Setup);
 
         Assert.Contains("superior", exception.Message, StringComparison.Ordinal);
         using var verificationConnection = connectionFactory.OpenConnection();
-        Assert.Equal(2, verificationConnection.ExecuteScalar<int>("PRAGMA user_version;"));
+        Assert.Equal(3, verificationConnection.ExecuteScalar<int>("PRAGMA user_version;"));
         Assert.Empty(GetApplicationTables(verificationConnection));
     }
 
@@ -297,10 +306,255 @@ public sealed class DatabaseBootstrapTests
 
         var connectionFactory = CreateBootstrap(database).ConnectionFactory;
         using var connection = connectionFactory.OpenConnection();
-        Assert.Equal(["contacorrente", "idempotencia", "movimento"], GetApplicationTables(connection));
+        Assert.Equal(ExpectedTables, GetApplicationTables(connection));
         Assert.Equal(ExpectedSeedCount, CountAccounts(connection));
         Assert.Empty(connection.Query("PRAGMA foreign_key_check;"));
-        Assert.Equal(1, connection.ExecuteScalar<int>("PRAGMA user_version;"));
+        Assert.Equal(2, connection.ExecuteScalar<int>("PRAGMA user_version;"));
+    }
+
+    [Fact]
+    public void Setup_EmptyDatabase_SeedsAccountHoldersAndZeroBalances()
+    {
+        using var database = new TemporarySqliteDatabase();
+        var (connectionFactory, bootstrap) = CreateBootstrap(database);
+
+        bootstrap.Setup();
+
+        using var connection = connectionFactory.OpenConnection();
+        Assert.Equal(ExpectedSeedCount, connection.ExecuteScalar<int>("SELECT COUNT(*) FROM titularidade_conta;"));
+        Assert.Equal(
+            ExpectedSeedCount,
+            connection.ExecuteScalar<int>("SELECT COUNT(DISTINCT idcorrentista) FROM titularidade_conta;"));
+        Assert.Equal(
+            "04b276dc-0f45-4efc-bffc-911110198733",
+            connection.QuerySingle<string>(
+                """
+                SELECT t.idcorrentista
+                FROM titularidade_conta t
+                JOIN contacorrente c ON c.idcontacorrente = t.idcontacorrente
+                WHERE c.numero = 456;
+                """));
+        Assert.Equal(ExpectedSeedCount, connection.ExecuteScalar<int>("SELECT COUNT(*) FROM saldo_conta;"));
+        Assert.Equal(
+            0,
+            connection.ExecuteScalar<int>(
+                "SELECT COUNT(*) FROM saldo_conta WHERE saldo_centavos <> 0 OR versao <> 0;"));
+    }
+
+    [Fact]
+    public void Setup_VersionOneDatabaseWithMovements_BackfillsBalanceProjection()
+    {
+        using var database = new TemporarySqliteDatabase();
+        var (connectionFactory, bootstrap) = CreateBootstrap(database);
+        CreateVersionOneDatabase(connectionFactory);
+
+        using (var connection = connectionFactory.OpenConnection())
+        {
+            InsertMovement(connection, "C", 100.10);
+            InsertMovement(connection, "C", 0.20);
+            InsertMovement(connection, "D", 50.05);
+        }
+
+        bootstrap.Setup();
+
+        using var verificationConnection = connectionFactory.OpenConnection();
+        var projection = verificationConnection.QuerySingle<(long BalanceCents, long Version)>(
+            "SELECT saldo_centavos, versao FROM saldo_conta WHERE idcontacorrente = 'legacy-account';");
+        Assert.Equal(5025L, projection.BalanceCents);
+        Assert.Equal(3L, projection.Version);
+        Assert.Equal(2, verificationConnection.ExecuteScalar<int>("PRAGMA user_version;"));
+        Assert.Equal(3, verificationConnection.ExecuteScalar<int>("SELECT COUNT(*) FROM movimento;"));
+        Assert.Equal(
+            0,
+            verificationConnection.ExecuteScalar<int>(
+                "SELECT COUNT(*) FROM titularidade_conta WHERE idcontacorrente = 'legacy-account';"));
+    }
+
+    [Fact]
+    public void Setup_ReferenceFixtureCopy_MigratesToVersionTwoWithoutLosingAccounts()
+    {
+        using var database = new TemporarySqliteDatabase();
+        File.Copy(
+            Path.Combine(AppContext.BaseDirectory, "Fixtures", "reference-database.sqlite"),
+            database.DatabasePath);
+        var (connectionFactory, bootstrap) = CreateBootstrap(database);
+
+        bootstrap.Setup();
+
+        using var connection = connectionFactory.OpenConnection();
+        Assert.Equal(ExpectedTables, GetApplicationTables(connection));
+        Assert.Equal(ExpectedSeedCount, CountAccounts(connection));
+        Assert.Equal(ExpectedSeedCount, connection.ExecuteScalar<int>("SELECT COUNT(*) FROM titularidade_conta;"));
+        Assert.Equal(ExpectedSeedCount, connection.ExecuteScalar<int>("SELECT COUNT(*) FROM saldo_conta;"));
+        Assert.Equal(2, connection.ExecuteScalar<int>("PRAGMA user_version;"));
+    }
+
+    [Fact]
+    public void Setup_RepeatedOnCurrentVersion_PreservesProjectionAndAccountHolders()
+    {
+        using var database = new TemporarySqliteDatabase();
+        var (connectionFactory, bootstrap) = CreateBootstrap(database);
+        bootstrap.Setup();
+
+        using (var connection = connectionFactory.OpenConnection())
+        {
+            connection.Execute(
+                """
+                UPDATE saldo_conta SET saldo_centavos = 12345, versao = 7
+                WHERE idcontacorrente = 'FA99D033-7067-ED11-96C6-7C5DFA4A16C9';
+
+                UPDATE titularidade_conta SET idcorrentista = '11111111-1111-1111-1111-111111111111'
+                WHERE idcontacorrente = 'FA99D033-7067-ED11-96C6-7C5DFA4A16C9';
+                """);
+        }
+
+        bootstrap.Setup();
+
+        using var verificationConnection = connectionFactory.OpenConnection();
+        var projection = verificationConnection.QuerySingle<(long BalanceCents, long Version)>(
+            """
+            SELECT saldo_centavos, versao FROM saldo_conta
+            WHERE idcontacorrente = 'FA99D033-7067-ED11-96C6-7C5DFA4A16C9';
+            """);
+        Assert.Equal((12345L, 7L), projection);
+        Assert.Equal(
+            "11111111-1111-1111-1111-111111111111",
+            verificationConnection.QuerySingle<string>(
+                """
+                SELECT idcorrentista FROM titularidade_conta
+                WHERE idcontacorrente = 'FA99D033-7067-ED11-96C6-7C5DFA4A16C9';
+                """));
+        Assert.Equal(ExpectedSeedCount, verificationConnection.ExecuteScalar<int>("SELECT COUNT(*) FROM saldo_conta;"));
+    }
+
+    [Theory]
+    [InlineData(
+        "CREATE TABLE titularidade_conta (idcontacorrente TEXT(37) PRIMARY KEY, idcorrentista TEXT(36));",
+        "titularidade_conta")]
+    [InlineData(
+        """
+        CREATE TABLE titularidade_conta (
+            idcontacorrente TEXT(37) PRIMARY KEY,
+            idcorrentista TEXT(36) NOT NULL
+        );
+        """,
+        "chave estrangeira")]
+    [InlineData(
+        """
+        CREATE TABLE saldo_conta (
+            idcontacorrente TEXT(37) PRIMARY KEY,
+            saldo_centavos REAL NOT NULL,
+            versao INTEGER NOT NULL,
+            FOREIGN KEY(idcontacorrente) REFERENCES contacorrente(idcontacorrente)
+        );
+        """,
+        "saldo_centavos")]
+    public void Setup_IncompatibleVersionTwoTable_FailsSafely(string incompatibleTableSql, string expectedDiagnostic)
+    {
+        using var database = new TemporarySqliteDatabase();
+        var (connectionFactory, bootstrap) = CreateBootstrap(database);
+
+        using (var connection = connectionFactory.OpenConnection())
+        {
+            connection.Execute(incompatibleTableSql);
+        }
+
+        var exception = Assert.Throws<InvalidDatabaseSchemaException>(bootstrap.Setup);
+
+        Assert.Contains(expectedDiagnostic, exception.Message, StringComparison.OrdinalIgnoreCase);
+        using var verificationConnection = connectionFactory.OpenConnection();
+        Assert.Equal(0, verificationConnection.ExecuteScalar<int>("PRAGMA user_version;"));
+    }
+
+    [Theory]
+    [InlineData("'not-a-number'")]
+    [InlineData("1.005")]
+    [InlineData("-10.0")]
+    [InlineData("0.0")]
+    [InlineData("10000000000.0")]
+    public void Setup_VersionOneDatabaseWithInvalidPersistedAmount_FailsWithoutMigrating(string persistedAmountSql)
+    {
+        using var database = new TemporarySqliteDatabase();
+        var (connectionFactory, bootstrap) = CreateBootstrap(database);
+        CreateVersionOneDatabase(connectionFactory);
+
+        using (var connection = connectionFactory.OpenConnection())
+        {
+            connection.Execute(
+                $"""
+                INSERT INTO movimento(idmovimento, idcontacorrente, datamovimento, tipomovimento, valor)
+                VALUES ('invalid-movement', 'legacy-account', '01/10/2026', 'C', {persistedAmountSql});
+                """);
+        }
+
+        var exception = Assert.Throws<InvalidDatabaseSchemaException>(bootstrap.Setup);
+
+        Assert.Contains("valor monetário", exception.Message, StringComparison.Ordinal);
+        using var verificationConnection = connectionFactory.OpenConnection();
+        Assert.Equal(1, verificationConnection.ExecuteScalar<int>("PRAGMA user_version;"));
+        Assert.Equal(
+            ["contacorrente", "idempotencia", "movimento"],
+            GetApplicationTables(verificationConnection));
+    }
+
+    [Fact]
+    public void Setup_VersionOneDatabaseWithDivergentProjection_FailsWithoutMigrating()
+    {
+        using var database = new TemporarySqliteDatabase();
+        var (connectionFactory, bootstrap) = CreateBootstrap(database);
+        CreateVersionOneDatabase(connectionFactory);
+
+        using (var connection = connectionFactory.OpenConnection())
+        {
+            connection.Execute(
+                """
+                CREATE TABLE saldo_conta (
+                    idcontacorrente TEXT(37) PRIMARY KEY,
+                    saldo_centavos INTEGER NOT NULL,
+                    versao INTEGER NOT NULL,
+                    FOREIGN KEY(idcontacorrente) REFERENCES contacorrente(idcontacorrente)
+                );
+
+                INSERT INTO saldo_conta(idcontacorrente, saldo_centavos, versao)
+                VALUES ('legacy-account', 99900, 1);
+                """);
+        }
+
+        var exception = Assert.Throws<InvalidDatabaseSchemaException>(bootstrap.Setup);
+
+        Assert.Contains("diverge", exception.Message, StringComparison.Ordinal);
+        using var verificationConnection = connectionFactory.OpenConnection();
+        Assert.Equal(1, verificationConnection.ExecuteScalar<int>("PRAGMA user_version;"));
+    }
+
+    private static void CreateVersionOneDatabase(SqliteConnectionFactory connectionFactory)
+    {
+        using var connection = connectionFactory.OpenConnection();
+        connection.Execute(CreateAccountTableSql);
+        connection.Execute(CreateMovementTableSql);
+        connection.Execute(
+            """
+            CREATE TABLE idempotencia (
+                chave_idempotencia TEXT(37) PRIMARY KEY,
+                requisicao TEXT(1000),
+                resultado TEXT(1000)
+            );
+
+            INSERT INTO contacorrente(idcontacorrente, numero, nome, ativo)
+            VALUES ('legacy-account', 999, 'Conta legada', 1);
+
+            PRAGMA user_version = 1;
+            """);
+    }
+
+    private static void InsertMovement(SqliteConnection connection, string movementType, double amount)
+    {
+        connection.Execute(
+            """
+            INSERT INTO movimento(idmovimento, idcontacorrente, datamovimento, tipomovimento, valor)
+            VALUES (@MovementId, 'legacy-account', '01/10/2026', @MovementType, @Amount);
+            """,
+            new { MovementId = Guid.NewGuid().ToString("D"), MovementType = movementType, Amount = amount });
     }
 
     private static (SqliteConnectionFactory ConnectionFactory, DatabaseBootstrap Bootstrap) CreateBootstrap(

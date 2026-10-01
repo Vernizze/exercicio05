@@ -855,4 +855,30 @@ O gate completo foi executado ao final e passou: restore bloqueado, auditoria di
 
 Não foram alterados schema, regra de titularidade, idempotência ou consulta de saldo. Enquanto a Entrega F2 não for concluída, qualquer correntista autenticado ainda pode movimentar qualquer conta ativa. A Entrega F1 foi encerrada em commit funcional isolado.
 
+#### Entrega F2 — schema versão 2, titularidade e projeção de saldo
+
+A entrega partiu do commit `ac90297`, no branch `20260930`, com workspace limpo.
+
+**Schema.** `DatabaseBootstrap` passou a migrar para `user_version = 2`. Na mesma transação imediata ele cria e valida as tabelas `titularidade_conta` e `saldo_conta`, grava a titularidade das seis contas do seed sem sobrescrever titularidades existentes, cria a linha de saldo das contas que ainda não a possuem e, quando o banco vem de uma versão anterior, reconcilia a projeção antes de confirmar. `SqliteSchemaValidator` exige as duas tabelas novas com a mesma verificação estrita das demais. As tabelas do proponente e a fixture não foram alteradas; um teste migra uma cópia da fixture para a versão 2.
+
+**Projeção de saldo.** `BalanceProjection` concentra a conversão para centavos inteiros, o preenchimento inicial e a comparação com os movimentos. A reconstrução lê cada movimento individualmente, converte o `REAL` legado para `decimal`, rejeita valor não numérico, não finito, não positivo, acima do limite ou com mais de duas casas, e não usa `SUM(valor)`. Um valor persistido fora do contrato ou uma projeção divergente aborta a migração sem alterar o banco.
+
+**Movimentação.** `MovementStore` passou a validar, dentro da transação, existência da conta, titularidade e situação ativa, nessa ordem, e a atualizar `saldo_conta` com aritmética inteira verificada e incremento de `versao`, entre a inserção do movimento e o registro idempotente. A repetição idempotente continua sendo resolvida antes de qualquer escrita e não altera o saldo. A ausência da linha de projeção impede a movimentação.
+
+**Titularidade.** Conta de outro correntista, inclusive inativa, e conta sem titular lançam `AccountOwnershipDeniedException`, que para o cliente produz exatamente a mesma resposta `400 INVALID_ACCOUNT` de conta não cadastrada. O motivo real é registrado somente no novo evento 5301, com fingerprints do correntista e da conta. O correntista é lido da claim `sub` do token já validado e nunca de campo da requisição.
+
+**Idempotência.** A representação canônica passou a `v2|titular=…|conta=…|valor=…|tipo=…`. A mesma chave usada por outro correntista retorna 409 sem revelar o resultado original, e um registro `v1` preexistente também produz conflito.
+
+**Limites.** O limite específico da movimentação passou a ser contado por correntista autenticado; requisições sem identidade válida são contadas por IP, e o limite global por IP permanece.
+
+**Reconciliação.** Foi criado `IBalanceReconciler`, acionado pela linha de comando `--reconciliar-saldos`: a aplicação compara projeção e movimentos em um snapshot de leitura, informa as contas divergentes por fingerprint e encerra com código 0 ou 1, sem iniciar o servidor. A execução foi conferida manualmente sobre um banco descartável e terminou com código 0. A rotina apenas diagnostica; não corrige a projeção e não possui endpoint.
+
+Os testes existentes foram adaptados ao titular e à representação `v2`, e foram acrescentados testes de migração, titularidade, idempotência entre correntistas, projeção, concorrência sem perda de atualização, reconciliação e limite por correntista. A suíte passou de 106 para 144 testes.
+
+`ESPECIFICACAO_MOVIMENTACAO.md` foi reconciliada com o estado implementado: as seções 1 a 8 passaram a descrever autenticação, titularidade, idempotência `v2`, algoritmo com atualização de saldo e limites por correntista, e a seção 10 tornou-se um registro histórico. `ESPECIFICACAO_AUTENTICACAO.md`, `ESPECIFICACAO_SALDO.md` e `TODO.md` registram o estado da entrega; a etapa E1 foi concluída dentro da F2.
+
+O gate completo foi executado ao final e passou: restore bloqueado, auditoria direta e transitiva sem vulnerabilidades conhecidas, secret scanning sem achados, formatação e analisadores aprovados, build Release com zero avisos e zero erros, 144 testes aprovados e cobertura com nova execução em 144/144. A fixture `Questao5/database.sqlite` manteve o SHA-256 `E355A3EDB7D73E7784A7467513248D530C27CC989C624A35D13A188B2AA8DD3C`.
+
+Não foram criados endpoint, query ou handler de saldo. A Entrega F2 foi encerrada em commit funcional isolado.
+
 ---

@@ -29,8 +29,8 @@ Pendências acionáveis descobertas em qualquer especificação, relatório, dir
 | D | Concluída | Planejar a consulta de saldo, sem implementação antecipada. |
 | F0 | Concluída | Revisão documental: autenticação JWT, titularidade de conta e emissor do desafio. |
 | F1 | Concluída | Autenticação JWT na API. |
-| F2 | Autorizada — próxima | Schema versão 2, titularidade, projeção de saldo e autorização na movimentação. |
-| E | Autorizada — após F2 | Implementar a consulta de saldo (E2 a E4), já com autorização por titular. |
+| F2 | Concluída | Schema versão 2, titularidade, projeção de saldo e autorização na movimentação. |
+| E | Autorizada — próxima | Implementar a consulta de saldo (E2 a E4), já com autorização por titular. |
 | G | Autorizada — após E | Empacotamento com Dockerfile e Docker Compose, incluindo o emissor de teste. |
 
 A sequência F0, F1, F2, E e G foi autorizada pelo usuário em 1º de outubro de 2026 (Interação 033 de `CONVERSAS.md`). Cada entrega termina com o gate completo e um commit isolado.
@@ -112,29 +112,30 @@ A sequência F0, F1, F2, E e G foi autorizada pelo usuário em 1º de outubro de
 
 ### Entrega F2 — schema versão 2, titularidade e projeção de saldo
 
-- **Estado:** Autorizada — depende de F1
-- **Especificação:** `ESPECIFICACAO_AUTENTICACAO.md`, seções 4, 6, 7, 8 e 9; `ESPECIFICACAO_SALDO.md`, seção 4; `ESPECIFICACAO_MOVIMENTACAO.md`, seção 10
+- **Estado:** Concluída em 1º de outubro de 2026
+- **Especificação:** `ESPECIFICACAO_AUTENTICACAO.md`, seções 4, 6, 7, 8 e 9; `ESPECIFICACAO_SALDO.md`, seção 4; `ESPECIFICACAO_MOVIMENTACAO.md`
 - **Observação:** absorve a etapa E1 (migração e projeção persistida), porque `titularidade_conta` e `saldo_conta` pertencem à mesma migração de schema
 - **Limite:** não criar endpoint, query ou handler de saldo
+- **Evidência:** `DatabaseBootstrap` migra para `user_version = 2`, cria e valida as duas tabelas, grava as titularidades do seed e preenche a projeção; `BalanceProjection` concentra a conversão para centavos, o preenchimento inicial e a comparação com os movimentos; `MovementStore` confere a titularidade e atualiza o saldo na transação imediata; `MovementRequestNormalizer` gera a representação `v2`; `IBalanceReconciler` e a linha de comando `--reconciliar-saldos` executam a reconciliação sob demanda; `SecurityLogger` emite o evento 5301. A suíte passou de 106 para 144 testes.
 
 #### Critérios de aceite
 
-- [ ] A migração cria `titularidade_conta` e `saldo_conta`, grava as seis titularidades, preenche e reconcilia o saldo e eleva `user_version` para `2`, de forma transacional, idempotente e segura para concorrência.
-- [ ] O validador de schema exige as duas tabelas novas; a fixture versionada permanece intacta.
-- [ ] A movimentação valida existência, titularidade e situação ativa, nessa ordem, dentro da transação.
-- [ ] Conta de outro correntista ou sem titularidade retorna `INVALID_ACCOUNT` idêntico ao de conta não cadastrada e não grava dados.
-- [ ] A movimentação confirmada atualiza `saldo_conta` e `versao` na mesma transação; replay não altera saldo.
-- [ ] A idempotência usa a representação `v2`; a mesma chave por outro correntista retorna 409.
-- [ ] O limite específico é contado por correntista; o limite global por IP permanece.
-- [ ] O evento 5301 é emitido sem conta ou correntista em claro.
-- [ ] Existe rotina de reconciliação que detecta divergência entre projeção e movimentos.
-- [ ] Gate completo aprovado e fixture com o SHA-256 esperado.
+- [x] A migração cria `titularidade_conta` e `saldo_conta`, grava as seis titularidades, preenche e reconcilia o saldo e eleva `user_version` para `2`, de forma transacional, idempotente e segura para concorrência.
+- [x] O validador de schema exige as duas tabelas novas; a fixture versionada permanece intacta.
+- [x] A movimentação valida existência, titularidade e situação ativa, nessa ordem, dentro da transação.
+- [x] Conta de outro correntista ou sem titularidade retorna `INVALID_ACCOUNT` idêntico ao de conta não cadastrada e não grava dados.
+- [x] A movimentação confirmada atualiza `saldo_conta` e `versao` na mesma transação; replay não altera saldo.
+- [x] A idempotência usa a representação `v2`; a mesma chave por outro correntista retorna 409.
+- [x] O limite específico é contado por correntista; o limite global por IP permanece.
+- [x] O evento 5301 é emitido sem conta ou correntista em claro.
+- [x] Existe rotina de reconciliação que detecta divergência entre projeção e movimentos.
+- [x] Gate completo aprovado e fixture com o SHA-256 esperado.
 
 ### Entrega E — implementação da consulta de saldo
 
 - **Estado:** Autorizada — depende de F2
 - **Especificação:** `ESPECIFICACAO_SALDO.md`
-- **Sequência:** E1 foi absorvida pela F2; E2 núcleo de consulta; E3 contrato HTTP; E4 limites, logs, inventário, gate e commit funcional
+- **Sequência:** E1 foi absorvida e concluída pela F2; E2 núcleo de consulta; E3 contrato HTTP; E4 limites, logs, inventário, gate e commit funcional
 - **Decisão arquitetural:** CQRS local com projeção persistida (`saldo_conta`), sem cache em memória, mensageria ou consistência eventual; consulta restrita ao titular da conta
 
 ### Entrega G — empacotamento com Docker Compose
@@ -389,10 +390,10 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - [x] Está documentado que conta existente/ativa não equivale a conta autorizada.
 - [x] O DTO da movimentação expõe apenas propriedades necessárias e impede overposting.
 - [x] O vínculo conta–correntista e a regra de titularidade estão especificados.
-- [ ] A movimentação só é aceita para conta do correntista autenticado.
+- [x] A movimentação só é aceita para conta do correntista autenticado.
 - [ ] A consulta de saldo só é aceita para conta do correntista autenticado.
-- [ ] Conta de outro correntista é indistinguível de conta não cadastrada na resposta, reduzindo enumeração.
-- [ ] A idempotência não permite que um correntista recupere o resultado de outro.
+- [ ] Conta de outro correntista é indistinguível de conta não cadastrada na resposta, reduzindo enumeração; atendido na movimentação pela Entrega F2, pendente na consulta de saldo.
+- [x] A idempotência não permite que um correntista recupere o resultado de outro.
 - [ ] Reavaliar este item antes de qualquer implantação real.
 
 ### SEC-003 — Corrigir a validação parcial do bootstrap
@@ -444,7 +445,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - [x] O uso de centavos em `INTEGER` foi avaliado; decidiu-se por mitigação temporária compatível com o esquema legado e migração futura separada.
 - [ ] Saldo e movimentações mantêm precisão em casos limítrofes e repetidos.
 - [ ] Existem testes para centavos, arredondamento, limites e soma de muitos movimentos.
-- [ ] A projeção `saldo_conta` mantém o saldo em centavos inteiros e reconcilia com os movimentos.
+- [x] A projeção `saldo_conta` mantém o saldo em centavos inteiros e reconcilia com os movimentos.
 
 ### SEC-006 — Habilitar e testar integridade referencial SQLite
 
@@ -488,7 +489,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 #### Critérios de aceite
 
 - [x] Limites globais e por endpoint estão definidos e documentados.
-- [ ] Limites por cliente, conta ou chave são aplicados conforme o modelo de identidade.
+- [x] Limites por cliente, conta ou chave são aplicados conforme o modelo de identidade: o limite específico da movimentação é contado por correntista desde a Entrega F2; limites por conta ou por chave não foram adotados.
 - [x] Excesso retorna HTTP 429 de forma consistente.
 - [x] Timeouts, tamanho de entrada e concorrência são limitados.
 - [x] Existem testes de abuso, rajada, repetição e exaustão de recursos aplicáveis ao escopo atual.
@@ -595,6 +596,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - **Decisão da Entrega B:** Event IDs 5100 a 5105 distinguirão primeira execução, repetição, conflito, rejeição de negócio, rollback e limite excedido. Payload, conta, valor, chave integral, SQL e connection string são proibidos nos logs.
 - **Evidência C3:** `MovementLogger` implementa e testa os Event IDs 5100 a 5105, fingerprint truncado da chave, campos estruturados e ausência de conta, valor, payload, chave integral, SQL, caminho do banco e mensagem bruta de exceção.
 - **Evidência F1:** `SecurityLogger` implementa e testa o evento 5300 de falha de autenticação, com motivo em categoria fechada e sem token, correntista ou mensagem da biblioteca de validação.
+- **Evidência F2:** `SecurityLogger` implementa e testa o evento 5301 de acesso negado por titularidade, com fingerprints do correntista e da conta e sem os identificadores em claro.
 
 #### Critérios de aceite
 
@@ -663,6 +665,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - **Evidência C3:** a suíte passou a ter 79 testes, incluindo frequência global e específica, concorrência sem fila, timeout com cancelamento observado, eventos 5100–5105, fingerprint estável e ausência de dados sensíveis nos logs.
 - **Evidência C4:** a suíte passou a ter 80 testes com uma regressão que valida o documento OpenAPI e exige inventário restrito a `POST /api/v1/movimentos`.
 - **Evidência F1:** a suíte passou a ter 106 testes. Foram acrescentados os casos de autenticação (token ausente, expirado, ainda não válido, assinado por outra chave, emissor, audiência e algoritmo inválidos, sem assinatura, malformado, sem `sub` UUID e emissor indisponível), a falha de inicialização por configuração `Jwt` inválida, o esquema Bearer no OpenAPI e a regressão de isolamento do banco de testes. Os testes HTTP existentes passaram a enviar token assinado por chave gerada no próprio teste.
+- **Evidência F2:** a suíte passou a ter 144 testes. Foram acrescentados os casos de migração (seed de titularidades, preenchimento da projeção a partir de banco na versão 1, migração de cópia da fixture, preservação em execuções repetidas, rejeição de tabelas incompatíveis, de valores persistidos fora do contrato e de projeção divergente), de titularidade no store e no HTTP (conta alheia, conta alheia inativa, conta sem titular, corpo idêntico ao de conta inexistente, evento 5301), de idempotência entre correntistas e com registro `v1`, de projeção (centavos, versão, replay, rollback, ausência da linha, concorrência sem perda de atualização), de reconciliação e de limite por correntista.
 
 #### Critérios de aceite
 
@@ -806,3 +809,5 @@ Estes itens são controles contínuos e não devem ser marcados globalmente como
 - **1º de outubro de 2026:** Entrega D consolidou em `ESPECIFICACAO_SALDO.md` os requisitos, contrato HTTP, cálculo monetário, tempo UTC, snapshot de leitura, limites, logs, arquitetura, testes e riscos residuais da consulta de saldo. O gate passou com 80 testes, zero avisos, zero erros, sem vulnerabilidades conhecidas ou segredos detectados; a fixture manteve o SHA-256 esperado. Nenhum código funcional foi implementado; a Entrega E permanece bloqueada até autorização específica.
 - **1º de outubro de 2026:** revisão documental da Entrega D substituiu o cálculo em tempo real pela projeção persistida de saldo (`saldo_conta`), com centavos inteiros, atualização transacional com movimento e idempotência, preenchimento inicial e reconciliação. O cache em memória foi avaliado e descartado nesta etapa, e o cenário foi reconfirmado como centrado em conta, sem identidade de titular. Nenhum código funcional, schema, fixture ou dado operacional foi alterado; a Entrega E permanece bloqueada.
 - **1º de outubro de 2026:** levantamento de fechamento de escopo registrou TODO-003 a TODO-006, ainda sem autorização de execução. A Entrega F0 revogou a exceção de autenticação, reabriu SEC-001 e SEC-002 e consolidou em `ESPECIFICACAO_AUTENTICACAO.md` a autenticação JWT, o identificador do correntista, a tabela `titularidade_conta`, a regra de titularidade para movimentação e saldo, a idempotência `v2` e o emissor `mock-oauth2-server` em Docker Compose. As especificações de movimentação e saldo e as diretrizes foram atualizadas; a tabela de erros da movimentação passou a listar 413, 415 e 504, e o estado de SEC-007 foi corrigido. O usuário autorizou a sequência F0, F1, F2, E e G; a etapa E1 foi absorvida pela F2. Nenhum código, schema, fixture ou dado operacional foi alterado na F0.
+- **1º de outubro de 2026:** Entrega F1 implementou a autenticação JWT: pacote `Microsoft.AspNetCore.Authentication.JwtBearer 10.0.12`, validação de assinatura, algoritmo, emissor, audiência, validade e `sub` UUID, política padrão de usuário autenticado, resposta 401 `UNAUTHENTICATED`, evento 5300 e esquema Bearer no OpenAPI. Foi corrigido um defeito preexistente pelo qual os testes HTTP gravavam em um banco compartilhado na pasta de saída do projeto de testes, e não no banco temporário isolado. A suíte passou de 80 para 106 testes e o gate completo foi aprovado.
+- **1º de outubro de 2026:** Entrega F2 migrou o schema para a versão 2, com `titularidade_conta` e `saldo_conta`, seed das seis titularidades e preenchimento da projeção. A movimentação passou a exigir que a conta pertença ao correntista do token, a atualizar o saldo consolidado na mesma transação, a usar idempotência `v2` amarrada ao correntista e a contar o limite específico por correntista; a negativa por titularidade responde `INVALID_ACCOUNT` e é registrada no evento 5301. Foi criada a reconciliação sob demanda (`--reconciliar-saldos`). A etapa E1 foi concluída dentro desta entrega. A suíte passou de 106 para 144 testes e o gate completo foi aprovado; a fixture manteve o SHA-256 esperado.

@@ -8,6 +8,8 @@ Uma revisão documental posterior, também sem implementação funcional, substi
 
 Uma segunda revisão documental, a Entrega F0, também de 1º de outubro de 2026, revogou a exceção de autenticação: a consulta passa a exigir JWT e a conta só pode ser consultada por seu titular. As regras de identidade, titularidade e token estão em `ESPECIFICACAO_AUTENTICACAO.md`; este documento registra apenas seus efeitos sobre a consulta de saldo.
 
+Estado de implementação: a Entrega F2, concluída em 1º de outubro de 2026, implementou a parte de escrita desta especificação — a tabela `saldo_conta`, a migração com preenchimento inicial, a atualização transacional pela movimentação e a reconciliação (seções 4.3 a 4.7). O endpoint, a query, o handler, o store de leitura, os limites e os logs da consulta permanecem planejados para a Entrega E.
+
 Fazem parte desta especificação:
 
 - requisitos funcionais do enunciado;
@@ -223,6 +225,14 @@ Como já podem existir movimentos antes da criação da projeção, a migração
 6. validar a reconciliação antes de concluir a migração.
 
 A reconstrução não usará `SUM(valor)` em ponto flutuante. Uma rotina de reconciliação, executável sob demanda, comparará o saldo consolidado com o recalculado a partir dos movimentos para detectar divergências.
+
+Como implementado na Entrega F2:
+
+- a cada inicialização, o bootstrap cria a linha de saldo das contas que ainda não a possuem, reconstruindo o valor dos movimentos; linhas existentes não são alteradas;
+- `versao` é preenchida com a quantidade de movimentos da conta;
+- quando o banco vem de uma versão anterior de schema, a projeção é reconciliada antes de a migração ser confirmada, e qualquer divergência ou valor persistido fora do contrato aborta a migração sem alterar o banco;
+- a reconciliação sob demanda é o serviço `IBalanceReconciler`, acionado pela linha de comando `--reconciliar-saldos`: a aplicação compara projeção e movimentos em um snapshot de leitura, informa a quantidade de contas divergentes e o fingerprint de cada uma, e encerra com código 0 quando não há divergência e 1 quando há, sem iniciar o servidor;
+- a reconciliação apenas diagnostica; não corrige a projeção automaticamente, e não existe endpoint para acioná-la.
 
 ### 4.7 Contas sem movimentos e overflow
 

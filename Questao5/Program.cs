@@ -5,8 +5,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.OpenApi;
+using Questao5.Application.Balances;
 using Questao5.Application.Movements;
 using Questao5.Infrastructure.Database.CommandStore;
+using Questao5.Infrastructure.Database.QueryStore;
 using Questao5.Infrastructure.Services.Correlation;
 using Questao5.Infrastructure.Services.Errors;
 using Questao5.Infrastructure.Services.Identifiers;
@@ -17,6 +19,8 @@ using System.Globalization;
 using System.Reflection;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
+
+const string ReconcileBalancesArgument = "--reconciliar-saldos";
 
 var builder = WebApplication.CreateBuilder(args);
 var movementOptions = builder.Configuration
@@ -119,7 +123,7 @@ builder.Services.AddRateLimiter(options =>
     var movementFrequencyLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
         IsMovementRequest(context)
             ? RateLimitPartition.GetFixedWindowLimiter(
-                GetClientPartition(context),
+                GetIdentityPartition(context),
                 _ => new FixedWindowRateLimiterOptions
                 {
                     PermitLimit = movementOptions.EndpointPermitLimit,
@@ -182,6 +186,7 @@ builder.Services.AddMediatR(Assembly.GetExecutingAssembly());
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IMovementIdGenerator, GuidMovementIdGenerator>();
 builder.Services.AddSingleton<IMovementStore, MovementStore>();
+builder.Services.AddSingleton<IBalanceReconciler, BalanceReconciler>();
 
 builder.Services.AddSingleton(new DatabaseConfig(builder.Configuration["DatabaseName"]));
 builder.Services.AddSingleton<ISqliteConnectionFactory, SqliteConnectionFactory>();
@@ -226,11 +231,38 @@ app.MapControllers();
 
 app.Services.GetRequiredService<IDatabaseBootstrap>().Setup();
 
+// Reconciliação sob demanda: compara a projeção de saldo com os movimentos e encerra sem iniciar o servidor.
+if (args.Contains(ReconcileBalancesArgument, StringComparer.Ordinal))
+{
+    var reconciliation = app.Services.GetRequiredService<IBalanceReconciler>().Reconcile();
+
+    foreach (var accountFingerprint in reconciliation.DivergentAccountFingerprints)
+    {
+        Console.Error.WriteLine($"Saldo divergente. AccountFingerprint: {accountFingerprint}");
+    }
+
+    Console.Out.WriteLine(reconciliation.IsConsistent
+        ? "Reconciliação concluída: nenhuma divergência."
+        : $"Reconciliação concluída: {reconciliation.DivergentAccountFingerprints.Count} conta(s) divergente(s).");
+
+    return reconciliation.IsConsistent ? 0 : 1;
+}
+
 app.Run();
+
+return 0;
 
 static string GetClientPartition(HttpContext context)
 {
     return context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+}
+
+// O limite específico é contado por correntista autenticado; sem identidade válida, por IP.
+static string GetIdentityPartition(HttpContext context)
+{
+    return context.User.TryGetAccountHolderId(out var accountHolderId)
+        ? $"sub:{accountHolderId}"
+        : $"ip:{GetClientPartition(context)}";
 }
 
 static bool IsMovementRequest(HttpContext context)

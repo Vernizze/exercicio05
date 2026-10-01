@@ -14,6 +14,22 @@ namespace Questao5.Infrastructure.Services.Security
             LogAuthenticationFailed(logger, correlationId, reason, "Rejected");
         }
 
+        public void AccessDenied(string correlationId, string subjectFingerprint, string accountFingerprint)
+        {
+            LogAccessDenied(logger, correlationId, subjectFingerprint, accountFingerprint, "Denied");
+        }
+
+        [LoggerMessage(
+            EventId = 5301,
+            Level = LogLevel.Warning,
+            Message = "Account access denied. CorrelationId: {CorrelationId}; SubjectFingerprint: {SubjectFingerprint}; AccountFingerprint: {AccountFingerprint}; Outcome: {Outcome}")]
+        private static partial void LogAccessDenied(
+            ILogger logger,
+            string correlationId,
+            string subjectFingerprint,
+            string accountFingerprint,
+            string outcome);
+
         [LoggerMessage(
             EventId = 5300,
             Level = LogLevel.Warning,

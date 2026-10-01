@@ -6,6 +6,7 @@ using Questao5.Application.Exceptions;
 using Questao5.Infrastructure.Services.Controllers.Filters;
 using Questao5.Infrastructure.Services.Controllers.Models;
 using Questao5.Infrastructure.Services.Movements;
+using Questao5.Infrastructure.Services.Security;
 
 namespace Questao5.Infrastructure.Services.Controllers
 {
@@ -15,11 +16,16 @@ namespace Questao5.Infrastructure.Services.Controllers
     {
         private readonly IMediator mediator;
         private readonly MovementLogger movementLogger;
+        private readonly SecurityLogger securityLogger;
 
-        public MovementController(IMediator mediator, MovementLogger movementLogger)
+        public MovementController(
+            IMediator mediator,
+            MovementLogger movementLogger,
+            SecurityLogger securityLogger)
         {
             this.mediator = mediator;
             this.movementLogger = movementLogger;
+            this.securityLogger = securityLogger;
         }
 
         [HttpPost]
@@ -38,8 +44,10 @@ namespace Questao5.Infrastructure.Services.Controllers
         {
             var requestId = Guid.ParseExact(request.IdRequisicao!, "D").ToString("D");
             var fingerprint = IdempotencyFingerprint.Create(requestId);
+            var accountHolderId = User.GetAccountHolderId();
             var command = new CreateMovementCommand(
                 requestId,
+                accountHolderId,
                 request.IdContaCorrente!,
                 request.Valor!.Value,
                 request.TipoMovimento!);
@@ -62,6 +70,14 @@ namespace Questao5.Infrastructure.Services.Controllers
             catch (IdempotencyConflictException)
             {
                 movementLogger.Conflict(HttpContext.TraceIdentifier, fingerprint);
+                throw;
+            }
+            catch (AccountOwnershipDeniedException)
+            {
+                securityLogger.AccessDenied(
+                    HttpContext.TraceIdentifier,
+                    SecurityFingerprint.Create(accountHolderId),
+                    SecurityFingerprint.ForAccount(request.IdContaCorrente!));
                 throw;
             }
             catch (BusinessRuleException exception)

@@ -30,6 +30,31 @@ namespace Questao5.Infrastructure.Sqlite
             new("resultado", "TEXT(1000)", false, 0, null)
         ];
 
+        private static readonly ColumnDefinition[] AccountHolderColumns =
+        [
+            new("idcontacorrente", "TEXT(37)", false, 1, null),
+            new("idcorrentista", "TEXT(36)", true, 0, null)
+        ];
+
+        private static readonly ColumnDefinition[] BalanceColumns =
+        [
+            new("idcontacorrente", "TEXT(37)", false, 1, null),
+            new("saldo_centavos", "INTEGER", true, 0, null),
+            new("versao", "INTEGER", true, 0, null)
+        ];
+
+        public static void ValidateAccountHolderTable(SqliteConnection connection, SqliteTransaction transaction)
+        {
+            ValidateColumns(connection, transaction, "titularidade_conta", AccountHolderColumns);
+            ValidateForeignKey(connection, transaction, "titularidade_conta");
+        }
+
+        public static void ValidateBalanceTable(SqliteConnection connection, SqliteTransaction transaction)
+        {
+            ValidateColumns(connection, transaction, "saldo_conta", BalanceColumns);
+            ValidateForeignKey(connection, transaction, "saldo_conta");
+        }
+
         public static void ValidateAccountTable(SqliteConnection connection, SqliteTransaction transaction)
         {
             ValidateColumns(connection, transaction, "contacorrente", AccountColumns);
@@ -41,7 +66,7 @@ namespace Questao5.Infrastructure.Sqlite
         {
             ValidateColumns(connection, transaction, "movimento", MovementColumns);
             ValidateCheckConstraint(connection, transaction, "movimento", "CHECK(TIPOMOVIMENTOIN('C','D'))");
-            ValidateForeignKey(connection, transaction);
+            ValidateForeignKey(connection, transaction, "movimento");
         }
 
         public static void ValidateIdempotencyTable(SqliteConnection connection, SqliteTransaction transaction)
@@ -124,15 +149,16 @@ namespace Questao5.Infrastructure.Sqlite
 
         private static void ValidateForeignKey(
             SqliteConnection connection,
-            SqliteTransaction transaction)
+            SqliteTransaction transaction,
+            string tableName)
         {
             var foreignKeys = connection.Query<TableForeignKey>(
-                """
+                $"""
                 SELECT
                     "table" AS ReferencedTable,
                     "from" AS SourceColumn,
                     "to" AS ReferencedColumn
-                FROM pragma_foreign_key_list('movimento');
+                FROM pragma_foreign_key_list('{tableName}');
                 """,
                 transaction: transaction).AsList();
 
@@ -143,7 +169,7 @@ namespace Questao5.Infrastructure.Sqlite
 
             if (!isValid)
             {
-                throw Incompatible("movimento", "chave estrangeira de conta ausente ou incompatível");
+                throw Incompatible(tableName, "chave estrangeira de conta ausente ou incompatível");
             }
         }
 

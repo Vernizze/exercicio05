@@ -2,7 +2,7 @@
 
 ## 1. Escopo e estado
 
-Este documento foi criado na Entrega B, em 1º de outubro de 2026, para fechar o contrato e o desenho técnico do TODO-002. A implementação correspondente foi concluída nas entregas C1 a C3 e reconciliada documentalmente na C4.
+Este documento foi criado na Entrega B, em 1º de outubro de 2026, para fechar o contrato e o desenho técnico do TODO-002. A implementação correspondente foi concluída nas entregas C1 a C3 e reconciliada documentalmente na C4. As entregas F1 e F2 acrescentaram autenticação por JWT, autorização por titular, idempotência amarrada ao correntista e manutenção da projeção de saldo; este documento foi reconciliado com esse estado na F2.
 
 Fazem parte desta especificação:
 
@@ -20,7 +20,7 @@ Permanecem fora do escopo:
 
 - consulta de saldo;
 - cadastro de contas;
-- autenticação e autorização, dispensadas somente para este exercício;
+- emissão de tokens, login e autorização por função, conforme `ESPECIFICACAO_AUTENTICACAO.md`;
 - migração de `movimento.valor` de `REAL` para centavos inteiros;
 - correção do tipo histórico de `movimento.idcontacorrente`;
 - mudanças de contrato ou de persistência além das decisões registradas neste documento.
@@ -32,9 +32,12 @@ Permanecem fora do escopo:
 ```http
 POST /api/v1/movimentos
 Content-Type: application/json
+Authorization: Bearer <JWT>
 ```
 
 O versionamento na URL torna o endpoint inventariável e permite evolução sem alteração silenciosa do contrato.
+
+O endpoint exige JWT válido. O correntista é identificado somente pela claim `sub` do token, nunca por campo da requisição; as regras de validação do token estão em `ESPECIFICACAO_AUTENTICACAO.md`.
 
 ### 2.2 Requisição
 
@@ -81,9 +84,11 @@ Erros usam `application/problem+json`, o tratamento global existente e a extens�
 
 | Situação | HTTP | `code` | Observação |
 | --- | --- | --- | --- |
+| Token ausente ou inválido | 401 | `UNAUTHENTICATED` | header `WWW-Authenticate: Bearer`; motivo específico não devolvido |
 | JSON inválido, campo ausente, formato ou limite inválido | 400 | validação por campo | resposta de validação do ASP.NET Core |
 | Conta não cadastrada | 400 | `INVALID_ACCOUNT` | exigido pelo enunciado |
-| Conta inativa | 400 | `INACTIVE_ACCOUNT` | exigido pelo enunciado |
+| Conta de outro correntista ou sem titularidade | 400 | `INVALID_ACCOUNT` | corpo idêntico ao de conta não cadastrada |
+| Conta própria inativa | 400 | `INACTIVE_ACCOUNT` | exigido pelo enunciado |
 | Valor não positivo, acima do limite ou com escala maior que 2 | 400 | `INVALID_VALUE` | regra de negócio estável |
 | Tipo diferente de `C` ou `D` | 400 | `INVALID_TYPE` | regra de negócio estável |
 | Mesma chave com requisição normalizada diferente | 409 | `IDEMPOTENCY_CONFLICT` | conflito, não uma nova execução |
@@ -119,7 +124,7 @@ O conflito idempotente usa HTTP 409 porque a requisição isoladamente pode ser 
 O campo `idempotencia.requisicao` não armazena o JSON bruto. Ele contém uma representação interna versionada, sem espaços e independente da ordem das propriedades:
 
 ```text
-v1|conta=FA99D033-7067-ED11-96C6-7C5DFA4A16C9|valor=125.50|tipo=C
+v2|titular=04b276dc-0f45-4efc-bffc-911110198733|conta=FA99D033-7067-ED11-96C6-7C5DFA4A16C9|valor=125.50|tipo=C
 ```
 
 Regras:
@@ -128,8 +133,9 @@ Regras:
 2. A conta é canonicalizada sem acesso ao banco: espaços externos são removidos e letras ASCII são convertidas para maiúsculas de forma invariável. Espaços internos não são corrigidos. Na primeira execução, a busca usa comparação ordinal sem diferenciar maiúsculas/minúsculas, e o valor efetivamente persistido em `contacorrente.idcontacorrente` é usado no movimento.
 3. O valor usa cultura invariável e exatamente duas casas.
 4. O tipo preserva somente `C` ou `D` após validação; valores alternativos não são convertidos.
-5. A versão `v1` permite mudar o algoritmo futuramente sem reinterpretar registros antigos.
-6. A comparação é ordinal e exata.
+5. O titular é o UUID do correntista autenticado, em minúsculas. Assim, a mesma chave usada por outro correntista produz conteúdo diferente e resulta em conflito, sem revelar o resultado original.
+6. A versão `v2` substituiu a `v1`, anterior à autenticação. Registros `v1` não possuem titular, nunca coincidem com uma representação `v2` e produzem conflito na reutilização da chave.
+7. A comparação é ordinal e exata.
 
 ### 4.3 Resultado armazenado
 
@@ -145,7 +151,7 @@ O serviço reconstrói o DTO HTTP a partir desse valor. Headers transitórios, c
 
 #### Primeira execução válida
 
-Cria exatamente um movimento e um registro idempotente na mesma transação, e retorna o ID criado.
+Cria exatamente um movimento e um registro idempotente e atualiza o saldo consolidado da conta, tudo na mesma transação, e retorna o ID criado.
 
 #### Repetição idêntica
 
@@ -171,14 +177,15 @@ Movimento e registro idempotente sofrem rollback. Uma nova tentativa pode execut
 4. Consultar `idempotencia` pela chave normalizada.
 5. Se existir, comparar o conteúdo canônico e retornar repetição ou conflito sem inserir dados.
 6. Se não existir, buscar a conta por comparação ordinal sem diferenciar maiúsculas/minúsculas, usando o identificador persistido no movimento.
-7. Validar existência e situação ativa.
+7. Validar, nesta ordem, existência da conta, titularidade em `titularidade_conta` e situação ativa.
 8. Gerar `idMovimento` como UUID canônico e `datamovimento` em UTC, no formato legado `dd/MM/yyyy` com cultura invariável.
 9. Inserir o movimento com SQL parametrizado.
-10. Inserir chave, requisição canônica e resultado mínimo com SQL parametrizado.
-11. Confirmar a transação.
-12. Em qualquer exceção anterior ao commit, executar rollback por descarte da transação e propagar um erro seguro.
+10. Atualizar `saldo_conta`: ler o saldo em centavos, somar ou subtrair o valor com aritmética inteira verificada e incrementar `versao`.
+11. Inserir chave, requisição canônica e resultado mínimo com SQL parametrizado.
+12. Confirmar a transação.
+13. Em qualquer exceção anterior ao commit, executar rollback por descarte da transação e propagar um erro seguro.
 
-Como o SQLite admite um escritor por vez, a transação imediata serializa duas primeiras execuções simultâneas. A vencedora confirma movimento e chave; a seguinte lê o registro confirmado e retorna repetição ou conflito. A chave primária de `idempotencia` continua sendo a defesa final contra duplicidade.
+Como o SQLite admite um escritor por vez, a transação imediata serializa duas primeiras execuções simultâneas. A vencedora confirma movimento, saldo e chave; a seguinte lê o registro confirmado e retorna repetição ou conflito. A chave primária de `idempotencia` continua sendo a defesa final contra duplicidade.
 
 Não há lock em memória, pois ele não protege múltiplos processos e criaria uma falsa garantia diferente da atomicidade do banco.
 
@@ -188,14 +195,14 @@ O endpoint implementado aplica:
 
 - corpo máximo: 4 KiB;
 - timeout da operação bancária: 5 segundos, respeitando o cancellation token da requisição;
-- rate limit específico: 30 requisições por minuto por IP, janela fixa, fila desabilitada;
-- rate limit global de segurança: 120 requisições por minuto por IP;
+- rate limit específico: 30 requisições por minuto por correntista autenticado, janela fixa, fila desabilitada; requisições sem identidade válida são contadas por IP;
+- rate limit global de segurança: 120 requisições por minuto por IP, aplicado antes da autenticação;
 - concorrência do endpoint: no máximo 8 operações em execução no processo, sem fila;
 - excesso de frequência ou concorrência: HTTP 429;
 - chave idempotente e correlation ID continuam sujeitos aos respectivos limites de formato;
 - tentativas idempotentes repetidas também consomem limite, evitando uso da tabela como canal de consulta irrestrito.
 
-O IP é somente um controle compensatório para o exercício anônimo. Ele não substitui identidade de cliente, autenticação ou autorização e não deve ser reutilizado como modelo de produção.
+O limite global por IP protege também o caminho de validação de token; requisições rejeitadas com 401 consomem limite. NAT, proxies e endereços compartilhados reduzem a precisão desse limite global.
 
 ## 6. Logs estruturados
 
@@ -209,6 +216,8 @@ Eventos implementados para o componente `Movement`:
 | 5103 | Warning | rejeição de regra de negócio | `CorrelationId`, `RuleCode`, `Outcome` |
 | 5104 | Error | rollback inesperado | `CorrelationId`, `ExceptionType`, `Outcome` |
 | 5105 | Warning | limite excedido | `CorrelationId`, `LimitName`, `Outcome` |
+
+A negativa por titularidade não emite o evento 5103: é registrada pelo evento 5301 do componente `Security`, com fingerprints do correntista e da conta, conforme `ESPECIFICACAO_AUTENTICACAO.md`. A falha de autenticação é registrada pelo evento 5300.
 
 `IdempotencyFingerprint` é composto pelos primeiros 16 caracteres hexadecimais do SHA-256 da chave normalizada. Não são registrados:
 
@@ -237,16 +246,16 @@ MovementController
 
 Responsabilidades:
 
-- controller: contrato HTTP, status e envio ao Mediator;
+- controller: contrato HTTP, status, obtenção do correntista a partir do token e envio ao Mediator;
 - request/command: DTO mínimo e validações estruturais;
 - handler: orquestração do caso de uso;
-- store transacional: toda leitura e escrita dependente da atomicidade na mesma conexão/transação;
+- store transacional: toda leitura e escrita dependente da atomicidade na mesma conexão/transação, incluindo titularidade e projeção de saldo;
 - normalizador idempotente: representação canônica e parse do resultado versionado;
 - relógio injetável: obtenção de UTC testável por `TimeProvider` nativo;
 - gerador de IDs injetável: testes determinísticos sem dependência adicional;
 - exceções de negócio: códigos estáveis tratados pelo mecanismo global.
 
-O acesso a conta, movimento e idempotência não é dividido em repositórios que abram conexões independentes dentro do mesmo caso de uso.
+O acesso a conta, titularidade, movimento, saldo e idempotência não é dividido em repositórios que abram conexões independentes dentro do mesmo caso de uso.
 
 ## 8. Matriz de testes implementada
 
@@ -278,11 +287,24 @@ O acesso a conta, movimento e idempotência não é dividido em repositórios qu
 - falha inesperada não reserva a chave;
 - duas ou mais requisições idênticas concorrentes criam um movimento;
 - requisições concorrentes conflitantes produzem um sucesso e conflitos, sem duplicidade;
-- representações JSON com ordem ou formatação diferentes resultam na mesma forma canônica.
+- representações JSON com ordem ou formatação diferentes resultam na mesma forma canônica;
+- a mesma chave usada por outro correntista retorna 409 sem revelar o resultado original;
+- registro `v1` preexistente produz conflito na reutilização da chave.
+
+### Autenticação, titularidade e projeção de saldo
+
+- requisição sem token ou com token inválido retorna 401 e não grava;
+- conta de outro correntista, inclusive inativa, ou sem titularidade retorna `INVALID_ACCOUNT` com corpo idêntico ao de conta não cadastrada e não grava;
+- crédito e débito atualizam `saldo_conta` em centavos e incrementam `versao` exatamente uma vez;
+- repetição idempotente não altera saldo nem versão;
+- falha após inserir o movimento reverte também o saldo;
+- movimentações concorrentes distintas não perdem atualização de saldo;
+- ausência da linha de projeção impede a movimentação;
+- a reconciliação detecta saldo ou movimento alterado fora do store.
 
 ### Segurança, abuso e observabilidade
 
-- rate limit e limite de concorrência retornam 429;
+- rate limit e limite de concorrência retornam 429; o limite específico é contado por correntista e requisições sem identidade por IP;
 - cancellation token e timeout interrompem espera sem estado parcial;
 - logs esperados são emitidos com Event IDs estáveis;
 - logs não contêm payload, conta, valor, chave integral, SQL ou connection string;
@@ -293,50 +315,8 @@ O acesso a conta, movimento e idempotência não é dividido em repositórios qu
 
 O TODO-002 foi concluído em 1º de outubro de 2026 após autorizações específicas para as entregas C1, C2 e C3. Qualquer mudança futura de rota, DTO, status HTTP, semântica idempotente, limite monetário ou estratégia transacional deverá atualizar este documento antes do código.
 
-## 10. Alterações planejadas — autenticação, titularidade e projeção de saldo
+## 10. Histórico — autenticação, titularidade e projeção de saldo
 
-As seções 1 a 8 descrevem o estado implementado até a Entrega C4, em que o endpoint é anônimo. A Entrega F0, de 1º de outubro de 2026, planejou as alterações abaixo, detalhadas em `ESPECIFICACAO_AUTENTICACAO.md` e `ESPECIFICACAO_SALDO.md`. Quando todas estiverem implementadas, as seções anteriores serão reconciliadas com o estado efetivo.
+Até a Entrega C4 o endpoint era anônimo, a chave de idempotência usava a representação `v1`, sem titular, e o limite específico era contado por IP. A Entrega F0, de 1º de outubro de 2026, planejou a autenticação por JWT, a autorização por titular, a idempotência `v2` e a manutenção da projeção `saldo_conta`. A Entrega F1 implementou a exigência de token e a resposta 401; a Entrega F2 implementou as demais alterações. As seções 1 a 8 já descrevem o estado resultante.
 
-Estado: a Entrega F1 implementou a exigência de `Authorization: Bearer <JWT>` e a resposta 401 da seção 10.1. Titularidade, algoritmo transacional, idempotência `v2`, limites por correntista e evento 5301 permanecem planejados para a Entrega F2.
-
-### 10.1 Contrato HTTP
-
-- o endpoint passa a exigir `Authorization: Bearer <JWT>`; rota, DTO e resposta de sucesso não mudam;
-- o identificador do correntista vem somente da claim `sub`; o DTO continua fechado nos quatro campos atuais;
-- token ausente ou inválido retorna HTTP 401 com `code` `UNAUTHENTICATED` e header `WWW-Authenticate: Bearer`;
-- conta de outro correntista ou sem titularidade retorna HTTP 400 `INVALID_ACCOUNT`, com corpo idêntico ao de conta não cadastrada;
-- autenticação, autorização e identidade de titular deixam de estar fora do escopo.
-
-### 10.2 Algoritmo transacional
-
-Dentro da mesma transação imediata, a sequência passa a ser:
-
-1. consultar `idempotencia` pela chave normalizada e resolver repetição ou conflito;
-2. buscar a conta e validar existência;
-3. validar em `titularidade_conta` que a conta pertence ao correntista do token;
-4. validar situação ativa;
-5. inserir o movimento;
-6. atualizar `saldo_conta`, somando ou subtraindo o valor em centavos e incrementando `versao`;
-7. inserir o registro idempotente;
-8. confirmar.
-
-Qualquer falha anterior ao commit reverte movimento, saldo e idempotência juntos.
-
-### 10.3 Idempotência
-
-A representação canônica passa à versão `v2` e inclui o titular:
-
-```text
-v2|titular=04b276dc-0f45-4efc-bffc-911110198733|conta=FA99D033-7067-ED11-96C6-7C5DFA4A16C9|valor=125.50|tipo=C
-```
-
-A mesma chave usada por outro correntista retorna `409 IDEMPOTENCY_CONFLICT`. Registros `v1` não coincidem com representações `v2` e também produzem conflito na reutilização da chave.
-
-### 10.4 Limites e logs
-
-- o limite específico de 30 requisições por minuto passa a ser contado por correntista autenticado; o limite global de 120 por minuto por IP permanece e é aplicado antes da autenticação;
-- os eventos 5100–5105 permanecem; a negativa por titularidade é registrada pelo evento 5301 do componente `Security`, sem conta ou correntista em claro.
-
-### 10.5 Testes
-
-Os testes existentes passam a enviar token. São acrescentados os casos de autenticação, titularidade, idempotência entre correntistas e manutenção da projeção definidos nas matrizes de `ESPECIFICACAO_AUTENTICACAO.md` e `ESPECIFICACAO_SALDO.md`.
+As regras de identidade, token e titularidade estão em `ESPECIFICACAO_AUTENTICACAO.md`; a estrutura, o preenchimento inicial e a reconciliação da projeção estão em `ESPECIFICACAO_SALDO.md`.

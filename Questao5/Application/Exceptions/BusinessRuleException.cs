@@ -1,6 +1,6 @@
 ﻿namespace Questao5.Application.Exceptions
 {
-    public sealed class BusinessRuleException : Exception
+    public class BusinessRuleException : Exception
     {
         public BusinessRuleException(string code, string message)
             : base(message)

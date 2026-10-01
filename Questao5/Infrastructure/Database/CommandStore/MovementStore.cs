@@ -1,4 +1,5 @@
 ﻿using Dapper;
+using Microsoft.Data.Sqlite;
 using Questao5.Application.Commands.Responses;
 using Questao5.Application.Exceptions;
 using Questao5.Application.Movements;
@@ -56,25 +57,30 @@ namespace Questao5.Infrastructure.Database.CommandStore
 
             var account = connection.QuerySingleOrDefault<AccountRecord>(
                 """
-                SELECT idcontacorrente AS Id, ativo AS Active
-                FROM contacorrente
-                WHERE idcontacorrente = @AccountId COLLATE NOCASE;
+                SELECT c.idcontacorrente AS Id,
+                       c.ativo AS Active,
+                       t.idcorrentista AS HolderId
+                FROM contacorrente c
+                LEFT JOIN titularidade_conta t ON t.idcontacorrente = c.idcontacorrente
+                WHERE c.idcontacorrente = @AccountId COLLATE NOCASE;
                 """,
                 new { request.AccountId },
                 transaction);
 
             if (account is null)
             {
-                throw new BusinessRuleException(
-                    "INVALID_ACCOUNT",
-                    "A conta corrente informada não está cadastrada.");
+                throw AccountRuleViolations.InvalidAccount();
+            }
+
+            // Conta sem titularidade não pertence a ninguém (falha fechada).
+            if (!string.Equals(account.HolderId, request.AccountHolderId, StringComparison.OrdinalIgnoreCase))
+            {
+                throw AccountRuleViolations.OwnershipDenied();
             }
 
             if (account.Active != 1)
             {
-                throw new BusinessRuleException(
-                    "INACTIVE_ACCOUNT",
-                    "A conta corrente informada está inativa.");
+                throw AccountRuleViolations.InactiveAccount();
             }
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -107,6 +113,8 @@ namespace Questao5.Infrastructure.Database.CommandStore
                 },
                 transaction);
 
+            UpdateBalanceProjection(connection, transaction, account.Id, request);
+
             cancellationToken.ThrowIfCancellationRequested();
 
             var result = $"v1|idMovimento={movementId}";
@@ -128,6 +136,34 @@ namespace Questao5.Infrastructure.Database.CommandStore
             return new CreateMovementResponse(movementId, IsReplay: false);
         }
 
+        private static void UpdateBalanceProjection(
+            SqliteConnection connection,
+            SqliteTransaction transaction,
+            string accountId,
+            NormalizedMovementRequest request)
+        {
+            // A transação imediata garante escritor único: ler e regravar o saldo aqui não perde atualização.
+            var currentCents = connection.QuerySingleOrDefault<long?>(
+                "SELECT saldo_centavos FROM saldo_conta WHERE idcontacorrente = @AccountId;",
+                new { AccountId = accountId },
+                transaction)
+                ?? throw new InvalidOperationException("A projeção de saldo da conta não existe.");
+            var amountCents = BalanceProjection.ToCents(request.Amount);
+            var newCents = request.MovementType == 'C'
+                ? checked(currentCents + amountCents)
+                : checked(currentCents - amountCents);
+
+            connection.Execute(
+                """
+                UPDATE saldo_conta
+                SET saldo_centavos = @BalanceCents,
+                    versao = versao + 1
+                WHERE idcontacorrente = @AccountId;
+                """,
+                new { AccountId = accountId, BalanceCents = newCents },
+                transaction);
+        }
+
         private static string ParseMovementId(string? result)
         {
             const string prefix = "v1|idMovimento=";
@@ -144,6 +180,6 @@ namespace Questao5.Infrastructure.Database.CommandStore
 
         private sealed record IdempotencyRecord(string? Request, string? Result);
 
-        private sealed record AccountRecord(string Id, long Active);
+        private sealed record AccountRecord(string Id, long Active, string? HolderId);
     }
 }
