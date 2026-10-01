@@ -837,4 +837,22 @@ Com isso, os resíduos documentais apontados nas Interações 027 e 028 foram co
 
 O gate completo foi executado novamente após as alterações documentais e passou com os mesmos resultados da linha de base. A fixture `Questao5/database.sqlite` manteve o SHA-256 `E355A3EDB7D73E7784A7467513248D530C27CC989C624A35D13A188B2AA8DD3C`. Nenhum código-fonte, teste, configuração, dependência, schema ou dado operacional foi alterado. A Entrega F0 foi encerrada em commit documental isolado, que inclui também os registros das Interações 027 a 033.
 
+#### Entrega F1 — autenticação JWT na API
+
+A entrega partiu do commit `2e011ee`, no branch `20260930`, com workspace limpo.
+
+Foi adicionado o pacote `Microsoft.AspNetCore.Authentication.JwtBearer 10.0.12`, mantido pela Microsoft e alinhado à versão do runtime já usada pelo projeto; os lock files foram atualizados e a auditoria direta e transitiva não reportou vulnerabilidades.
+
+Foram criados em `Questao5/Infrastructure/Services/Security`: `JwtAuthenticationOptions`, que lê a seção `Jwt` e impede a inicialização quando emissor, audiência ou endereço de metadados estão ausentes ou inválidos, ou quando o endereço não usa HTTPS sem exceção explícita; `JwtAuthenticationExtensions`, que configura a validação de assinatura, algoritmo (`RS256` em lista fechada), emissor, audiência, validade com tolerância de 30 segundos e sujeito UUID, define a política padrão de usuário autenticado e escreve a resposta 401; `SecurityLogger`, com o evento 5300; e `InvalidTokenSubjectException`. Em `Program.cs`, `UseAuthentication` foi posicionado antes do rate limiter e o Swagger passou a declarar o esquema Bearer. `appsettings.Development.json` recebeu a seção `Jwt` apontando para o emissor local previsto para o ambiente do desafio.
+
+Token ausente ou inválido retorna HTTP 401 em `application/problem+json`, com `code` `UNAUTHENTICATED`, correlation ID e `WWW-Authenticate: Bearer`, sem revelar o motivo. O motivo é registrado somente no evento 5300, como categoria fechada (`MissingToken`, `InvalidToken`, `ExpiredToken` ou `InvalidSubject`), sem token, correntista ou mensagem da biblioteca.
+
+Durante a adaptação dos testes foi encontrado um defeito preexistente: os testes HTTP não usavam o banco temporário isolado. `Program.cs` lê `DatabaseName` antes de a configuração da fábrica de testes ser aplicada, e por isso todos os testes HTTP vinham gravando em um banco compartilhado dentro da pasta de saída do projeto de testes, ignorada pelo Git. Nenhum arquivo rastreado ou a fixture foram afetados, mas a afirmação anterior de que os testes de integração usavam banco descartável não era verdadeira para os testes HTTP. As duas fábricas passaram a usar `UseSetting`, foi confirmado que o banco compartilhado deixou de ser tocado e foi acrescentada uma regressão que exige o movimento gravado no banco temporário do próprio teste.
+
+Os testes HTTP existentes passaram a enviar token assinado por uma chave RSA gerada no próprio teste, injetada no lugar da busca de chaves do emissor; nenhum teste depende de contêiner. Foram acrescentados testes para token ausente, expirado, ainda não válido, assinado por outra chave, com emissor, audiência ou algoritmo inválidos, sem assinatura, malformado e sem `sub` UUID; para emissor indisponível, que resulta em 401 e não em erro interno; para a exigência de autenticação em todos os endpoints; para a falha de inicialização por configuração inválida; para a ausência de motivo e de credenciais na resposta e no log; e para o esquema Bearer no OpenAPI. A suíte passou de 80 para 106 testes.
+
+O gate completo foi executado ao final e passou: restore bloqueado, auditoria direta e transitiva sem vulnerabilidades conhecidas, secret scanning sem achados, formatação e analisadores aprovados, build Release com zero avisos e zero erros, 106 testes aprovados e cobertura com nova execução em 106/106. A fixture `Questao5/database.sqlite` manteve o SHA-256 `E355A3EDB7D73E7784A7467513248D530C27CC989C624A35D13A188B2AA8DD3C`.
+
+Não foram alterados schema, regra de titularidade, idempotência ou consulta de saldo. Enquanto a Entrega F2 não for concluída, qualquer correntista autenticado ainda pode movimentar qualquer conta ativa. A Entrega F1 foi encerrada em commit funcional isolado.
+
 ---

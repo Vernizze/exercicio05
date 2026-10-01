@@ -1,14 +1,17 @@
 using MediatR;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http.Timeouts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.OpenApi;
 using Questao5.Application.Movements;
 using Questao5.Infrastructure.Database.CommandStore;
 using Questao5.Infrastructure.Services.Correlation;
 using Questao5.Infrastructure.Services.Errors;
 using Questao5.Infrastructure.Services.Identifiers;
 using Questao5.Infrastructure.Services.Movements;
+using Questao5.Infrastructure.Services.Security;
 using Questao5.Infrastructure.Sqlite;
 using System.Globalization;
 using System.Reflection;
@@ -28,6 +31,10 @@ if (movementOptions.TimeoutSeconds <= 0 ||
 {
     throw new InvalidOperationException("Os limites operacionais de movimentação devem ser maiores que zero.");
 }
+
+var jwtOptions = builder.Configuration
+    .GetSection(JwtAuthenticationOptions.SectionName)
+    .Get<JwtAuthenticationOptions>() ?? new JwtAuthenticationOptions();
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
@@ -64,6 +71,7 @@ builder.Services.AddProblemDetails(options =>
     };
 });
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddJwtAuthentication(jwtOptions);
 builder.Services.AddSingleton(movementOptions);
 builder.Services.AddSingleton<MovementLogger>();
 builder.Services.AddRequestTimeouts(options =>
@@ -180,13 +188,27 @@ builder.Services.AddSingleton<ISqliteConnectionFactory, SqliteConnectionFactory>
 builder.Services.AddSingleton<IDatabaseBootstrap, DatabaseBootstrap>();
 
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.AddSecurityDefinition(JwtBearerDefaults.AuthenticationScheme, new OpenApiSecurityScheme
+    {
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        Description = "JWT emitido pelo emissor configurado; a claim sub identifica o correntista."
+    });
+    options.AddSecurityRequirement(document => new OpenApiSecurityRequirement
+    {
+        [new OpenApiSecuritySchemeReference(JwtBearerDefaults.AuthenticationScheme, document)] = []
+    });
+});
 
 var app = builder.Build();
 
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
+app.UseAuthentication();
 app.UseRateLimiter();
 app.UseRequestTimeouts();
 

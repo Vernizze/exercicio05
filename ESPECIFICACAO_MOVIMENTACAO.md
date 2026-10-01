@@ -295,7 +295,9 @@ O TODO-002 foi concluído em 1º de outubro de 2026 após autorizações especí
 
 ## 10. Alterações planejadas — autenticação, titularidade e projeção de saldo
 
-As seções 1 a 8 descrevem o estado implementado até a Entrega C4, em que o endpoint é anônimo. A Entrega F0, de 1º de outubro de 2026, planejou as alterações abaixo, detalhadas em `ESPECIFICACAO_AUTENTICACAO.md` e `ESPECIFICACAO_SALDO.md`. Nenhuma delas está implementada; quando forem, as seções anteriores serão reconciliadas com o estado efetivo.
+As seções 1 a 8 descrevem o estado implementado até a Entrega C4, em que o endpoint é anônimo. A Entrega F0, de 1º de outubro de 2026, planejou as alterações abaixo, detalhadas em `ESPECIFICACAO_AUTENTICACAO.md` e `ESPECIFICACAO_SALDO.md`. Quando todas estiverem implementadas, as seções anteriores serão reconciliadas com o estado efetivo.
+
+Estado: a Entrega F1 implementou a exigência de `Authorization: Bearer <JWT>` e a resposta 401 da seção 10.1. Titularidade, algoritmo transacional, idempotência `v2`, limites por correntista e evento 5301 permanecem planejados para a Entrega F2.
 
 ### 10.1 Contrato HTTP
 

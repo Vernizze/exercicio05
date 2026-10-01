@@ -28,8 +28,8 @@ Pendências acionáveis descobertas em qualquer especificação, relatório, dir
 | C4 | Concluída | Limpeza do template, reconciliação documental, gate final e commit funcional consolidado. |
 | D | Concluída | Planejar a consulta de saldo, sem implementação antecipada. |
 | F0 | Concluída | Revisão documental: autenticação JWT, titularidade de conta e emissor do desafio. |
-| F1 | Autorizada — próxima | Autenticação JWT na API. |
-| F2 | Autorizada — após F1 | Schema versão 2, titularidade, projeção de saldo e autorização na movimentação. |
+| F1 | Concluída | Autenticação JWT na API. |
+| F2 | Autorizada — próxima | Schema versão 2, titularidade, projeção de saldo e autorização na movimentação. |
 | E | Autorizada — após F2 | Implementar a consulta de saldo (E2 a E4), já com autorização por titular. |
 | G | Autorizada — após E | Empacotamento com Dockerfile e Docker Compose, incluindo o emissor de teste. |
 
@@ -92,21 +92,23 @@ A sequência F0, F1, F2, E e G foi autorizada pelo usuário em 1º de outubro de
 
 ### Entrega F1 — autenticação JWT na API
 
-- **Estado:** Autorizada — próxima entrega
+- **Estado:** Concluída em 1º de outubro de 2026
 - **Especificação:** `ESPECIFICACAO_AUTENTICACAO.md`, seções 5, 6.3, 9 e 11
 - **Limite:** não alterar schema, regra de titularidade, idempotência ou consulta de saldo
+- **Evidência:** `Microsoft.AspNetCore.Authentication.JwtBearer 10.0.12` adicionado com lock file; `JwtAuthenticationExtensions` configura a validação e a política padrão; `JwtAuthenticationOptions` valida a configuração na inicialização; `SecurityLogger` emite o evento 5300; `UseAuthentication` foi posicionado antes do rate limiter; o Swagger declara o esquema Bearer. A suíte passou de 80 para 106 testes.
+- **Defeito preexistente corrigido:** os testes HTTP não usavam o banco temporário isolado. `Program.cs` lê `DatabaseName` antes de a configuração da fábrica de testes ser aplicada, de modo que todos os testes HTTP gravavam em um banco compartilhado em `Questao5.Tests/bin/<configuração>/net10.0/.data/database.sqlite`. As fábricas passaram a usar `UseSetting`, e um teste de regressão comprova que o movimento é gravado no banco temporário do próprio teste.
 
 #### Critérios de aceite
 
-- [ ] Pacote `Microsoft.AspNetCore.Authentication.JwtBearer` avaliado, fixado, com lock file e auditoria sem vulnerabilidades.
-- [ ] Assinatura, algoritmo, emissor, audiência, validade e `sub` UUID são validados conforme a especificação.
-- [ ] Todos os endpoints bancários exigem autenticação por política padrão.
-- [ ] Token ausente ou inválido retorna 401 `UNAUTHENTICATED` correlacionado, com `WWW-Authenticate: Bearer` e sem motivo específico.
-- [ ] A aplicação não inicia sem a configuração obrigatória de `Jwt`.
-- [ ] O evento 5300 é emitido sem token, header `Authorization` ou identidade em claro.
-- [ ] O documento OpenAPI declara o esquema de segurança Bearer.
-- [ ] Os testes existentes passam a enviar token e existem testes negativos de autenticação com chave local, sem depender de contêiner.
-- [ ] Gate completo aprovado e fixture com o SHA-256 esperado.
+- [x] Pacote `Microsoft.AspNetCore.Authentication.JwtBearer` avaliado, fixado, com lock file e auditoria sem vulnerabilidades.
+- [x] Assinatura, algoritmo, emissor, audiência, validade e `sub` UUID são validados conforme a especificação.
+- [x] Todos os endpoints bancários exigem autenticação por política padrão.
+- [x] Token ausente ou inválido retorna 401 `UNAUTHENTICATED` correlacionado, com `WWW-Authenticate: Bearer` e sem motivo específico.
+- [x] A aplicação não inicia sem a configuração obrigatória de `Jwt`.
+- [x] O evento 5300 é emitido sem token, header `Authorization` ou identidade em claro.
+- [x] O documento OpenAPI declara o esquema de segurança Bearer.
+- [x] Os testes existentes passam a enviar token e existem testes negativos de autenticação com chave local, sem depender de contêiner.
+- [x] Gate completo aprovado e fixture com o SHA-256 esperado.
 
 ### Entrega F2 — schema versão 2, titularidade e projeção de saldo
 
@@ -368,8 +370,8 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 - [x] A decisão anterior de ausência de autenticação e seu risco residual foram documentados.
 - [x] A autenticação por JWT, a validação do token e a limitação do emissor de teste estão especificadas.
-- [ ] Todo endpoint bancário exige token válido; token ausente ou inválido retorna 401.
-- [ ] Assinatura, algoritmo, emissor, audiência, validade e sujeito são validados e cobertos por testes negativos.
+- [x] Todo endpoint bancário exige token válido; token ausente ou inválido retorna 401.
+- [x] Assinatura, algoritmo, emissor, audiência, validade e sujeito são validados e cobertos por testes negativos.
 - [ ] Controles complementares: rate limiting, limites de entrada, logs e correlação estão implementados na movimentação; TLS de produção depende do ambiente.
 - [ ] Substituir o emissor de teste e reavaliar este item antes de qualquer implantação real.
 
@@ -559,6 +561,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - **Referenciais:** NIST SSDF PS.1; OpenSSF; proteção de dados e artefatos
 - **Evidência de origem:** `Questao5/database.sqlite` era usado como banco operacional e podia receber acidentalmente movimentos, chaves idempotentes ou respostas.
 - **Evidência atual:** o banco operacional padrão passou para `.data/database.sqlite`, ignorado pelo Git; testes usam bancos exclusivos em `%TEMP%`; a fixture versionada é copiada como somente referência nos testes e possui SHA-256 validado automaticamente.
+- **Correção da Entrega F1:** até essa entrega, os testes HTTP não usavam de fato o banco exclusivo: gravavam em um banco compartilhado dentro da pasta de saída do projeto de testes, ignorada pelo Git. Nenhum dado chegou a arquivo rastreado ou à fixture. As fábricas de teste foram corrigidas e há regressão cobrindo o isolamento.
 
 #### Critérios de aceite
 
@@ -591,6 +594,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - **Evidência de origem:** o logger injetado não era utilizado e não havia eventos explícitos para bootstrap, validação, autenticação, autorização, abuso ou idempotência.
 - **Decisão da Entrega B:** Event IDs 5100 a 5105 distinguirão primeira execução, repetição, conflito, rejeição de negócio, rollback e limite excedido. Payload, conta, valor, chave integral, SQL e connection string são proibidos nos logs.
 - **Evidência C3:** `MovementLogger` implementa e testa os Event IDs 5100 a 5105, fingerprint truncado da chave, campos estruturados e ausência de conta, valor, payload, chave integral, SQL, caminho do banco e mensagem bruta de exceção.
+- **Evidência F1:** `SecurityLogger` implementa e testa o evento 5300 de falha de autenticação, com motivo em categoria fechada e sem token, correntista ou mensagem da biblioteca de validação.
 
 #### Critérios de aceite
 
@@ -658,6 +662,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - **Evidência C2:** a suíte passou a ter 72 testes, incluindo 17 casos HTTP para crédito, débito, repetição, conflito, contas inválidas, JSON malformado, campos ausentes, propriedade desconhecida, UUID, valores, tipo, media type e corpo de 4 KiB.
 - **Evidência C3:** a suíte passou a ter 79 testes, incluindo frequência global e específica, concorrência sem fila, timeout com cancelamento observado, eventos 5100–5105, fingerprint estável e ausência de dados sensíveis nos logs.
 - **Evidência C4:** a suíte passou a ter 80 testes com uma regressão que valida o documento OpenAPI e exige inventário restrito a `POST /api/v1/movimentos`.
+- **Evidência F1:** a suíte passou a ter 106 testes. Foram acrescentados os casos de autenticação (token ausente, expirado, ainda não válido, assinado por outra chave, emissor, audiência e algoritmo inválidos, sem assinatura, malformado, sem `sub` UUID e emissor indisponível), a falha de inicialização por configuração `Jwt` inválida, o esquema Bearer no OpenAPI e a regressão de isolamento do banco de testes. Os testes HTTP existentes passaram a enviar token assinado por chave gerada no próprio teste.
 
 #### Critérios de aceite
 

@@ -2,6 +2,7 @@
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Data.Sqlite;
 using Questao5.Infrastructure.Services.Correlation;
 
 namespace Questao5.Tests.Infrastructure.Services;
@@ -32,6 +33,28 @@ public sealed class MovementEndpointTests
             "D",
             out _));
         Assert.NotEmpty(GetCorrelationHeader(response));
+    }
+
+    [Fact]
+    public async Task Create_ValidRequest_PersistsOnlyInTheIsolatedTestDatabase()
+    {
+        using var factory = new SecurityWebApplicationFactory();
+        using var client = CreateClient(factory);
+
+        using var response = await client.PostAsJsonAsync(
+            "/api/v1/movimentos",
+            CreateRequest(),
+            TestContext.Current.CancellationToken);
+
+        response.EnsureSuccessStatusCode();
+
+        using var connection = new SqliteConnection(
+            new SqliteConnectionStringBuilder { DataSource = factory.DatabasePath, Pooling = false }.ToString());
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM movimento;";
+
+        Assert.Equal(1L, command.ExecuteScalar());
     }
 
     [Fact]
@@ -267,10 +290,7 @@ public sealed class MovementEndpointTests
 
     private static HttpClient CreateClient(SecurityWebApplicationFactory factory)
     {
-        return factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
-        {
-            BaseAddress = new Uri("https://localhost")
-        });
+        return factory.CreateAuthenticatedClient();
     }
 
     private static async Task<JsonDocument> ReadJsonAsync(HttpResponseMessage response)

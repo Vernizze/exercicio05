@@ -4,6 +4,8 @@
 
 Este documento consolida a Entrega F0, realizada em 1º de outubro de 2026, e define o contrato e o desenho técnico da autenticação por JWT e da autorização por titular da conta. A entrega é exclusivamente de planejamento: nenhum pacote, middleware, tabela, migração, configuração ou teste executável de autenticação foi implementado nela.
 
+Estado de implementação: a Entrega F1, concluída em 1º de outubro de 2026, implementou a autenticação descrita nas seções 5, 6.3 (resposta 401), 9 (evento 5300) e 11 (testes de autenticação). Titularidade, schema, idempotência `v2`, limites por correntista, evento 5301 e empacotamento permanecem planejados.
+
 A decisão substitui a exceção registrada anteriormente em `DIRETRIZES_SEGURANCA.md`, segundo a qual o exercício permaneceria anônimo. SEC-001 e SEC-002 deixam de ser riscos aceitos e passam a ser itens em andamento.
 
 Fazem parte desta especificação:
@@ -117,6 +119,8 @@ A configuração fica na seção `Jwt`:
 | `Jwt:RequireHttpsMetadata` | `true` por padrão; `false` somente no ambiente de contêineres do desafio |
 
 Ausência ou valor inválido de `MetadataAddress`, `Issuer` ou `Audience` impede a inicialização. Nenhum segredo de autenticação é versionado: a API usa apenas chaves públicas do emissor.
+
+`appsettings.json` não define a seção `Jwt`. `appsettings.Development.json` aponta para o emissor local previsto para o ambiente do desafio (`http://localhost:8081/default`, audiência `questao5-api`), com `RequireHttpsMetadata=false`; esses valores serão confirmados na Entrega G. O documento de descoberta é buscado somente na primeira validação de token, de modo que a API inicia mesmo com o emissor indisponível e responde 401 enquanto ele não estiver acessível.
 
 ### 5.4 Dependência
 
@@ -272,8 +276,8 @@ Os testes automatizados não dependem do contêiner do emissor: usam uma chave d
 
 | Entrega | Escopo |
 | --- | --- |
-| F0 | Revisão documental: esta especificação, diretrizes, especificações de movimentação e saldo e `TODO.md`. |
-| F1 | Autenticação JWT na API: pacote, validação, política padrão, resposta 401, evento 5300 e testes com chave local. |
+| F0 (concluída) | Revisão documental: esta especificação, diretrizes, especificações de movimentação e saldo e `TODO.md`. |
+| F1 (concluída) | Autenticação JWT na API: pacote, validação, política padrão, resposta 401, evento 5300 e testes com chave local. |
 | F2 | Schema versão 2 (`titularidade_conta` e `saldo_conta`), manutenção da projeção de saldo, autorização por titular na movimentação, idempotência `v2`, limites por correntista e evento 5301. |
 | E2–E4 | Consulta de saldo já com autorização por titular, conforme `ESPECIFICACAO_SALDO.md`. |
 | G | Empacotamento com Dockerfile e Docker Compose, incluindo o emissor de teste e as instruções para os avaliadores. |

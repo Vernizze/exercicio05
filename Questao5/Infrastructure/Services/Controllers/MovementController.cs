@@ -26,6 +26,7 @@ namespace Questao5.Infrastructure.Services.Controllers
         [Consumes("application/json")]
         [ProducesResponseType<CreateMovementHttpResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status413PayloadTooLarge)]
         [RequestSizeLimit(MovementRequestBodySizeLimitAttribute.MaximumBodySize)]

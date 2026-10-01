@@ -231,10 +231,7 @@ public sealed class MovementOperationalTests
 
     private static HttpClient CreateClient(SecurityWebApplicationFactory factory)
     {
-        return factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
-        {
-            BaseAddress = new Uri("https://localhost")
-        });
+        return factory.CreateAuthenticatedClient();
     }
 
     private static Task<HttpResponseMessage> PostMovementAsync(
