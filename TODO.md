@@ -23,30 +23,30 @@ Pendências acionáveis descobertas em qualquer especificação, relatório, dir
 | C1 | Concluída | Implementar o núcleo transacional e idempotente. |
 | C2 | Concluída | Implementar o endpoint e o contrato HTTP. |
 | C3 | Concluída | Implementar limites operacionais, logs e testes de abuso. |
-| C4 | Próxima entrega | Limpeza do template, reconciliação documental, gate final e commit funcional consolidado. |
-| D | Planejada após C4 | Planejar a consulta de saldo, sem implementação antecipada. |
+| C4 | Concluída | Limpeza do template, reconciliação documental, gate final e commit funcional consolidado. |
+| D | Próxima entrega planejável | Planejar a consulta de saldo, sem implementação antecipada. |
 
 ### Entrega C4 — limpeza, documentação, gate e commit funcional
 
-- **Estado:** Planejada — próxima etapa autorizável
-- **Dependências:** C1, C2 e C3 concluídas; workspace limpo no commit `025ff18`
+- **Estado:** Concluída em 1º de outubro de 2026
+- **Dependências:** C1, C2 e C3 concluídas; organização documental registrada no commit `55f3f0a`
 - **Limite:** não implementar consulta de saldo, autenticação, autorização, CI/CD ou mudanças dependentes de infraestrutura
 
 #### Escopo e critérios de aceite
 
-- [ ] Remover `WeatherForecastController`, `WeatherForecast` e referências residuais do template.
-- [ ] Confirmar que Swagger e o inventário expõem somente endpoints intencionais.
-- [ ] Reconciliar `TODO.md`, `CONVERSAS.md` e `ESPECIFICACAO_MOVIMENTACAO.md` com o estado final da movimentação, sem reescrever relatórios históricos.
-- [ ] Revisar comentários, arquivos gerados, configurações e dependências para detectar resíduos ou documentação desatualizada.
-- [ ] Executar o gate completo: restore bloqueado, auditoria direta/transitiva, secret scanning, formatação/analisadores, build Release determinístico, testes e cobertura.
-- [ ] Confirmar novamente a integridade da fixture `Questao5/database.sqlite` pelo SHA-256 esperado.
-- [ ] Revisar o diff final e garantir ausência de mudanças de escopo ou dados operacionais.
-- [ ] Criar um commit funcional isolado da C4 somente após todos os critérios anteriores passarem.
-- [ ] Encerrar com workspace e index limpos e registrar as evidências em `CONVERSAS.md` e neste TODO.
+- [x] Remover `WeatherForecastController`, `WeatherForecast` e referências residuais do template.
+- [x] Confirmar que Swagger e o inventário expõem somente endpoints intencionais.
+- [x] Reconciliar `TODO.md`, `CONVERSAS.md` e `ESPECIFICACAO_MOVIMENTACAO.md` com o estado final da movimentação, sem reescrever relatórios históricos.
+- [x] Revisar comentários, arquivos gerados, configurações e dependências para detectar resíduos ou documentação desatualizada.
+- [x] Executar o gate completo: restore bloqueado, auditoria direta/transitiva, secret scanning, formatação/analisadores, build Release determinístico, testes e cobertura.
+- [x] Confirmar novamente a integridade da fixture `Questao5/database.sqlite` pelo SHA-256 esperado.
+- [x] Revisar o diff final e garantir ausência de mudanças de escopo ou dados operacionais.
+- [x] Criar um commit funcional isolado da C4 somente após todos os critérios anteriores passarem.
+- [x] Encerrar com workspace e index limpos e registrar as evidências em `CONVERSAS.md` e neste TODO.
 
 ### Entrega D — planejamento da consulta de saldo
 
-- **Estado:** Planejada — iniciar somente após o encerramento da C4 e autorização específica
+- **Estado:** Próxima entrega planejável — iniciar somente após autorização específica
 - **Escopo inicial:** extrair e consolidar requisitos; definir rota, DTOs, respostas HTTP, cálculo monetário, data/hora, segurança, logs, arquitetura e matriz de testes
 - **Limite:** a Entrega D é de planejamento; implementação da consulta de saldo exigirá entrega e autorização posteriores
 
@@ -494,16 +494,16 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 ### SEC-018 — Remover endpoint residual de exemplo
 
-- **Estado:** Planejado para a Entrega C4 — o endpoint real de movimentação já está disponível
+- **Estado:** Concluído na Entrega C4
 - **Prioridade:** Baixa
 - **Referenciais:** OWASP API9
-- **Evidência:** `/WeatherForecast` permanece exposto e não faz parte do requisito bancário.
+- **Evidência:** `WeatherForecastController`, o modelo `WeatherForecast` e comentários residuais do template foram removidos. Um teste de integração consulta o documento OpenAPI em Development e comprova que somente `POST /api/v1/movimentos` está exposto.
 
 #### Critérios de aceite
 
-- [ ] Controller e modelo de exemplo são removidos.
-- [ ] Swagger e inventário contêm apenas endpoints intencionais.
-- [ ] Não permanecem rotas, modelos ou documentação de template sem uso.
+- [x] Controller e modelo de exemplo são removidos.
+- [x] Swagger e inventário contêm apenas endpoints intencionais.
+- [x] Não permanecem rotas, modelos ou documentação de template sem uso.
 
 ### SEC-019 — Criar suíte de testes de segurança e regressão
 
@@ -511,11 +511,12 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - **Prioridade:** Alta
 - **Referenciais:** NIST SSDF PW.7, PW.8 e RV.1; OpenSSF
 - **Evidência de origem:** não existia projeto ou suíte de testes no repositório.
-- **Evidência atual:** `Questao5.Tests` usa lock file próprio, xUnit v3, Microsoft Testing Platform, NSubstitute, `WebApplicationFactory` e `coverlet.MTP`; 79 testes passam em Release. Há cobertura para configuração, banco temporário, bootstrap versionado e transacional, integridade referencial, hash da fixture, movimentação, contrato HTTP, idempotência, concorrência, rollback, timeout, abuso operacional, correlação, erros e logs sem dados sensíveis. A coleta em formato Cobertura permanece validada pelo gate local.
+- **Evidência atual:** `Questao5.Tests` usa lock file próprio, xUnit v3, Microsoft Testing Platform, NSubstitute, `WebApplicationFactory` e `coverlet.MTP`; 80 testes passam em Release. Há cobertura para configuração, banco temporário, bootstrap versionado e transacional, integridade referencial, hash da fixture, movimentação, contrato HTTP, inventário OpenAPI, idempotência, concorrência, rollback, timeout, abuso operacional, correlação, erros e logs sem dados sensíveis. A coleta em formato Cobertura permanece validada pelo gate local.
 - **Planejamento da Entrega B:** `ESPECIFICACAO_MOVIMENTACAO.md` define testes HTTP, monetários, transacionais, idempotentes, concorrentes, de conflito, rollback, abuso, cancelamento e conteúdo seguro dos logs que serão obrigatórios na implementação de TODO-002.
 - **Evidência C1:** a suíte passou a ter 55 testes, incluindo 28 casos focados no núcleo da movimentação para canonicalização, limites monetários, tipos, contas, persistência, repetição, conflito, rollback, cancelamento e concorrência idêntica ou conflitante.
 - **Evidência C2:** a suíte passou a ter 72 testes, incluindo 17 casos HTTP para crédito, débito, repetição, conflito, contas inválidas, JSON malformado, campos ausentes, propriedade desconhecida, UUID, valores, tipo, media type e corpo de 4 KiB.
 - **Evidência C3:** a suíte passou a ter 79 testes, incluindo frequência global e específica, concorrência sem fila, timeout com cancelamento observado, eventos 5100–5105, fingerprint estável e ausência de dados sensíveis nos logs.
+- **Evidência C4:** a suíte passou a ter 80 testes com uma regressão que valida o documento OpenAPI e exige inventário restrito a `POST /api/v1/movimentos`.
 
 #### Critérios de aceite
 
@@ -655,3 +656,4 @@ Estes itens são controles contínuos e não devem ser marcados globalmente como
 - **1º de outubro de 2026:** Entrega C2 implementou `POST /api/v1/movimentos`, DTO fechado, JSON estrito, validação automática, Problem Details para conflito e limite de corpo de 4 KiB. A suíte atingiu 72 testes; C3 permanece pendente para limites operacionais e logs.
 - **1º de outubro de 2026:** Entrega C3 implementou timeout de 5 segundos, rate limits de 30 e 120 requisições por minuto por IP, concorrência máxima de 8 sem fila, respostas 429/504 correlacionadas e logs 5100–5105 sem dados bancários. A suíte atingiu 79 testes e TODO-002 foi concluído.
 - **1º de outubro de 2026:** pausa de organização concluída. `TODO.md` foi confirmado como fonte canônica de escopo e andamento; documentos especializados e históricos foram classificados sem criar backlog paralelo. O roadmap foi consolidado com C4 para limpeza, documentação, gate e commit funcional, seguida da Entrega D para planejar a consulta de saldo. Estados evidentemente desatualizados de segurança foram reconciliados com as evidências de C1 a C3.
+- **1º de outubro de 2026:** Entrega C4 removeu o endpoint e o modelo `WeatherForecast`, eliminou comentários residuais do template e adicionou regressão do inventário OpenAPI. A especificação foi reconciliada com o estado implementado. O gate completo passou com 80 testes, zero avisos, zero erros, sem vulnerabilidades conhecidas ou segredos detectados; a fixture manteve o SHA-256 esperado. SEC-018 foi concluído e D tornou-se a próxima entrega planejável.

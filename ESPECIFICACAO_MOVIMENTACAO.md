@@ -1,8 +1,8 @@
-# Entrega B — Especificação do serviço de movimentação
+# Serviço de movimentação — especificação e estado implementado
 
 ## 1. Escopo e estado
 
-Esta entrega, planejada em 1º de outubro de 2026, fecha o contrato e o desenho técnico necessários para implementar o TODO-002. Ela não adiciona endpoint, persistência funcional, rate limiting ou migração de esquema.
+Este documento foi criado na Entrega B, em 1º de outubro de 2026, para fechar o contrato e o desenho técnico do TODO-002. A implementação correspondente foi concluída nas entregas C1 a C3 e reconciliada documentalmente na C4.
 
 Fazem parte desta especificação:
 
@@ -14,7 +14,7 @@ Fazem parte desta especificação:
 - algoritmo transacional e comportamento concorrente;
 - limites de entrada e proteção contra abuso;
 - eventos estruturados e dados proibidos em logs;
-- arquitetura prevista e matriz mínima de testes.
+- arquitetura implementada e matriz de testes.
 
 Permanecem fora do escopo:
 
@@ -23,7 +23,7 @@ Permanecem fora do escopo:
 - autenticação e autorização, dispensadas somente para este exercício;
 - migração de `movimento.valor` de `REAL` para centavos inteiros;
 - correção do tipo histórico de `movimento.idcontacorrente`;
-- implementação do TODO-002, que dependerá de autorização específica.
+- mudanças de contrato ou de persistência além das decisões registradas neste documento.
 
 ## 2. Contrato HTTP
 
@@ -54,13 +54,13 @@ O versionamento na URL torna o endpoint inventariável e permite evolução sem 
 | `valor` | número decimal JSON | Sim | maior que zero, no máximo duas casas decimais e no máximo `9999999999.99` |
 | `tipoMovimento` | texto | Sim | um único caractere; somente `C` ou `D`, sem conversão silenciosa de outros valores |
 
-O DTO será fechado e conterá somente esses quatro campos. Propriedades desconhecidas deverão ser rejeitadas para impedir overposting e erros silenciosos de contrato.
+O DTO é fechado e contém somente esses quatro campos. Propriedades desconhecidas são rejeitadas para impedir overposting e erros silenciosos de contrato.
 
-`idRequisicao` não será aceito no header `X-Correlation-ID`. Correlação e idempotência têm semânticas distintas.
+`idRequisicao` não é aceito no header `X-Correlation-ID`. Correlação e idempotência têm semânticas distintas.
 
 ### 2.3 Sucesso e repetição idêntica
 
-Tanto a primeira execução bem-sucedida quanto uma repetição idêntica retornarão:
+Tanto a primeira execução bem-sucedida quanto uma repetição idêntica retornam:
 
 ```http
 HTTP/1.1 200 OK
@@ -73,11 +73,11 @@ Content-Type: application/json
 }
 ```
 
-A repetição idêntica devolverá exatamente o mesmo `idMovimento`, sem inserir outro movimento. O `X-Correlation-ID` refletirá a tentativa HTTP atual, não a tentativa original.
+A repetição idêntica devolve exatamente o mesmo `idMovimento`, sem inserir outro movimento. O `X-Correlation-ID` reflete a tentativa HTTP atual, não a tentativa original.
 
 ### 2.4 Erros
 
-Erros usarão `application/problem+json`, o tratamento global existente e a extensão `correlationId`.
+Erros usam `application/problem+json`, o tratamento global existente e a extensão `correlationId`.
 
 | Situação | HTTP | `code` | Observação |
 | --- | --- | --- | --- |
@@ -94,26 +94,26 @@ O conflito idempotente usa HTTP 409 porque a requisição isoladamente pode ser 
 
 ## 3. Contrato monetário
 
-- A API, a aplicação e os testes usarão `decimal`; `double` e `float` são proibidos fora da adaptação inevitável ao esquema legado.
-- A escala aceita é de zero a duas casas decimais. Não haverá arredondamento implícito de entrada: valores com mais de duas casas serão rejeitados como `INVALID_VALUE`.
+- A API, a aplicação e os testes usam `decimal`; `double` e `float` são proibidos fora da adaptação inevitável ao esquema legado.
+- A escala aceita é de zero a duas casas decimais. Não há arredondamento implícito de entrada: valores com mais de duas casas são rejeitados como `INVALID_VALUE`.
 - A forma canônica sempre terá duas casas e usará cultura invariável, por exemplo `125.50`.
-- O limite por movimento será `9999999999.99`, reduzindo abuso e mantendo o contrato abaixo da capacidade de `decimal` e do texto canônico.
-- IDs e valores gerados pelo servidor não dependerão da cultura ou do fuso da máquina.
-- Temporariamente, o repositório converterá o `decimal` validado para o tipo aceito pelo `REAL` do SQLite somente no limite de persistência. Essa compatibilidade não elimina o risco de ponto flutuante e não conclui SEC-005.
+- O limite por movimento é `9999999999.99`, reduzindo abuso e mantendo o contrato abaixo da capacidade de `decimal` e do texto canônico.
+- IDs e valores gerados pelo servidor não dependem da cultura ou do fuso da máquina.
+- Temporariamente, o repositório converte o `decimal` validado para o tipo aceito pelo `REAL` do SQLite somente no limite de persistência. Essa compatibilidade não elimina o risco de ponto flutuante e não conclui SEC-005.
 - A futura consulta de saldo deverá converter cada valor persistido para `decimal`, normalizá-lo para escala 2 e efetuar toda soma/subtração em `decimal`. A política final de arredondamento de cálculos derivados será `MidpointRounding.ToEven`, aplicada somente quando uma operação produzir escala superior a 2.
 
 ## 4. Idempotência
 
 ### 4.1 Identidade da chave
 
-- `idRequisicao` será validado como UUID e normalizado para `Guid.ToString("D")` em minúsculas.
-- A chave normalizada será armazenada em `idempotencia.chave_idempotencia`.
+- `idRequisicao` é validado como UUID e normalizado para `Guid.ToString("D")` em minúsculas.
+- A chave normalizada é armazenada em `idempotencia.chave_idempotencia`.
 - A chave é global para o endpoint de movimentação, não por conta.
-- Chaves não serão reutilizáveis com outro payload, mesmo após conflito ou repetição.
+- Chaves não são reutilizáveis com outro payload, mesmo após conflito ou repetição.
 
 ### 4.2 Representação canônica da requisição
 
-O campo `idempotencia.requisicao` não armazenará o JSON bruto. Ele armazenará uma representação interna versionada, sem espaços e independente da ordem das propriedades:
+O campo `idempotencia.requisicao` não armazena o JSON bruto. Ele contém uma representação interna versionada, sem espaços e independente da ordem das propriedades:
 
 ```text
 v1|conta=FA99D033-7067-ED11-96C6-7C5DFA4A16C9|valor=125.50|tipo=C
@@ -126,17 +126,17 @@ Regras:
 3. O valor usa cultura invariável e exatamente duas casas.
 4. O tipo preserva somente `C` ou `D` após validação; valores alternativos não são convertidos.
 5. A versão `v1` permite mudar o algoritmo futuramente sem reinterpretar registros antigos.
-6. A comparação será ordinal e exata.
+6. A comparação é ordinal e exata.
 
 ### 4.3 Resultado armazenado
 
-`idempotencia.resultado` armazenará somente o resultado interno mínimo e versionado:
+`idempotencia.resultado` armazena somente o resultado interno mínimo e versionado:
 
 ```text
 v1|idMovimento=34e56aa7-703f-46d8-8f65-100f2795a87b
 ```
 
-O serviço reconstruirá o DTO HTTP a partir desse valor. Headers transitórios, correlation ID, timestamp, mensagem localizada e JSON bruto não serão persistidos.
+O serviço reconstrói o DTO HTTP a partir desse valor. Headers transitórios, correlation ID, timestamp, mensagem localizada e JSON bruto não são persistidos.
 
 ### 4.4 Semântica das execuções
 
@@ -177,11 +177,11 @@ Movimento e registro idempotente sofrem rollback. Uma nova tentativa pode execut
 
 Como o SQLite admite um escritor por vez, a transação imediata serializa duas primeiras execuções simultâneas. A vencedora confirma movimento e chave; a seguinte lê o registro confirmado e retorna repetição ou conflito. A chave primária de `idempotencia` continua sendo a defesa final contra duplicidade.
 
-Não haverá lock em memória, pois ele não protege múltiplos processos e criaria uma falsa garantia diferente da atomicidade do banco.
+Não há lock em memória, pois ele não protege múltiplos processos e criaria uma falsa garantia diferente da atomicidade do banco.
 
 ## 5. Limites e proteção contra abuso
 
-Na implementação do endpoint:
+O endpoint implementado aplica:
 
 - corpo máximo: 4 KiB;
 - timeout da operação bancária: 5 segundos, respeitando o cancellation token da requisição;
@@ -196,7 +196,7 @@ O IP é somente um controle compensatório para o exercício anônimo. Ele não 
 
 ## 6. Logs estruturados
 
-Eventos previstos para o componente `Movement`:
+Eventos implementados para o componente `Movement`:
 
 | Event ID | Nível | Evento | Campos permitidos |
 | --- | --- | --- | --- |
@@ -207,7 +207,7 @@ Eventos previstos para o componente `Movement`:
 | 5104 | Error | rollback inesperado | `CorrelationId`, `ExceptionType`, `Outcome` |
 | 5105 | Warning | limite excedido | `CorrelationId`, `LimitName`, `Outcome` |
 
-`IdempotencyFingerprint` será composto pelos primeiros 16 caracteres hexadecimais do SHA-256 da chave normalizada. Não serão registrados:
+`IdempotencyFingerprint` é composto pelos primeiros 16 caracteres hexadecimais do SHA-256 da chave normalizada. Não são registrados:
 
 - chave idempotente integral;
 - ID ou número da conta;
@@ -216,19 +216,19 @@ Eventos previstos para o componente `Movement`:
 - corpo ou representação canônica da requisição;
 - connection string, caminho do banco, SQL, stack trace ou mensagem bruta de exceção.
 
-Campos controlados pelo cliente serão valores estruturados validados, nunca interpolação livre de texto.
+Campos controlados pelo cliente são valores estruturados validados, nunca interpolação livre de texto.
 
-## 7. Arquitetura prevista
+## 7. Arquitetura implementada
 
-A implementação deverá manter as dependências já presentes: ASP.NET Core, MediatR, Dapper e Microsoft.Data.Sqlite, sem adicionar pacote novo.
+A implementação mantém as dependências já presentes: ASP.NET Core, MediatR, Dapper e Microsoft.Data.Sqlite, sem pacote funcional novo.
 
-Fluxo previsto:
+Fluxo implementado:
 
 ```text
 MovementController
   -> IMediator.Send(CreateMovementCommand)
     -> CreateMovementCommandHandler
-      -> IMovementService/Store transacional
+      -> IMovementStore transacional
         -> ISqliteConnectionFactory
 ```
 
@@ -239,13 +239,13 @@ Responsabilidades:
 - handler: orquestração do caso de uso;
 - store transacional: toda leitura e escrita dependente da atomicidade na mesma conexão/transação;
 - normalizador idempotente: representação canônica e parse do resultado versionado;
-- relógio injetável: obtenção de UTC testável, preferencialmente `TimeProvider` nativo;
-- gerador de IDs injetável ou função isolada: testes determinísticos sem dependência adicional;
+- relógio injetável: obtenção de UTC testável por `TimeProvider` nativo;
+- gerador de IDs injetável: testes determinísticos sem dependência adicional;
 - exceções de negócio: códigos estáveis tratados pelo mecanismo global.
 
-O acesso a conta, movimento e idempotência não será dividido em repositórios que abram conexões independentes dentro do mesmo caso de uso.
+O acesso a conta, movimento e idempotência não é dividido em repositórios que abram conexões independentes dentro do mesmo caso de uso.
 
-## 8. Matriz mínima de testes da implementação
+## 8. Matriz de testes implementada
 
 ### Contrato e validação HTTP
 
@@ -286,6 +286,6 @@ O acesso a conta, movimento e idempotência não será dividido em repositórios
 - fingerprint é estável para a mesma chave;
 - gate completo, auditoria, secret scanning, build sem avisos e cobertura são executados.
 
-## 9. Critério para iniciar a implementação
+## 9. Governança de mudanças
 
-O TODO-002 poderá sair do estado planejado somente após autorização específica para implementar esta especificação. Qualquer mudança de rota, DTO, status HTTP, semântica idempotente, limite monetário ou estratégia transacional deverá atualizar este documento antes do código.
+O TODO-002 foi concluído em 1º de outubro de 2026 após autorizações específicas para as entregas C1, C2 e C3. Qualquer mudança futura de rota, DTO, status HTTP, semântica idempotente, limite monetário ou estratégia transacional deverá atualizar este documento antes do código.

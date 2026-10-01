@@ -14,7 +14,6 @@ Este arquivo é o registro oficial das conversas sobre o desenvolvimento deste p
 
 ---
 
-
 ## Interação 001 — 30 de setembro de 2026
 
 **Modo: Act**
@@ -555,5 +554,27 @@ O `TODO.md` passou a declarar formalmente essa governança documental e a regra 
 O roadmap foi consolidado: B.1 e C1–C3 estão concluídas; C4 é a próxima entrega e cobre remoção dos resíduos de template, reconciliação documental, revisão final, gate completo, integridade da fixture e commit funcional isolado; D ocorrerá depois de C4 e será limitada ao planejamento da consulta de saldo. A implementação do saldo não foi autorizada nem iniciada.
 
 Também foram reconciliadas inconsistências objetivas do backlog: TODO-002 agora aparece concluído no procedimento pós-marcos; controles monetários já entregues foram distinguidos das pendências de saldo e migração; os logs 5100–5105 de C3 passaram a constar como evidência parcial de SEC-015; e a remoção do endpoint de exemplo foi alocada à C4. Nenhum código-fonte, teste, configuração funcional, staging ou commit foi alterado nesta pausa.
+
+---
+
+## Interação 023 — 1º de outubro de 2026
+
+**Modo: Act**
+
+### Usuário
+
+> Vamos a C4, então
+
+### Cline (assistente)
+
+A Entrega C4 foi executada no branch `20260930`, partindo do commit documental limpo `55f3f0a`. O escopo permaneceu restrito à limpeza do template, reconciliação documental, inventário de endpoints, validações finais e commit funcional; consulta de saldo, autenticação, autorização, CI/CD, migração monetária e infraestrutura não foram alteradas.
+
+Foram removidos `WeatherForecastController` e o modelo `WeatherForecast`, além dos comentários genéricos e corrompidos herdados do template em `Program.cs`. As referências a `/WeatherForecast` em `CONVERSAS.md` e `RELATORIO_SEGURANCA.md` foram preservadas como evidência histórica. As declarações de pastas vazias do projeto também foram preservadas por representarem a estrutura arquitetural recebida e os espaços reservados para consultas futuras, não resíduos executáveis.
+
+Foi adicionado um teste de integração isolado que inicia a aplicação em Development com banco descartável, consulta `/swagger/v1/swagger.json` e exige que o inventário contenha uma única operação: `POST /api/v1/movimentos`. O teste focado passou em 1/1. `ESPECIFICACAO_MOVIMENTACAO.md` foi reconciliado com o estado já implementado nas entregas C1 a C3, sem mudar contrato, regra de negócio ou persistência.
+
+O gate completo concluiu restore bloqueado, auditoria direta e transitiva sem vulnerabilidades conhecidas, secret scanning sem achados, formatação e analisadores aprovados, build Release determinístico com zero avisos e zero erros, 80 testes aprovados e coleta de cobertura com nova execução em 80/80. A fixture `Questao5/database.sqlite` manteve o SHA-256 `E355A3EDB7D73E7784A7467513248D530C27CC989C624A35D13A188B2AA8DD3C`.
+
+SEC-018 foi concluído, a C4 foi encerrada e a Entrega D passou a ser a próxima etapa planejável, ainda limitada à especificação da consulta de saldo. O commit funcional isolado e a confirmação do workspace limpo foram executados no fechamento desta interação.
 
 ---

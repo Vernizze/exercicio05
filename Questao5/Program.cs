@@ -29,7 +29,6 @@ if (movementOptions.TimeoutSeconds <= 0 ||
     throw new InvalidOperationException("Os limites operacionais de movimentação devem ser maiores que zero.");
 }
 
-// Add services to the container.
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
@@ -176,12 +175,10 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IMovementIdGenerator, GuidMovementIdGenerator>();
 builder.Services.AddSingleton<IMovementStore, MovementStore>();
 
-// sqlite
 builder.Services.AddSingleton(new DatabaseConfig(builder.Configuration["DatabaseName"]));
 builder.Services.AddSingleton<ISqliteConnectionFactory, SqliteConnectionFactory>();
 builder.Services.AddSingleton<IDatabaseBootstrap, DatabaseBootstrap>();
 
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -193,7 +190,6 @@ app.UseStatusCodePages();
 app.UseRateLimiter();
 app.UseRequestTimeouts();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -206,7 +202,6 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// sqlite
 app.Services.GetRequiredService<IDatabaseBootstrap>().Setup();
 
 app.Run();
@@ -223,8 +218,4 @@ static bool IsMovementRequest(HttpContext context)
 }
 
 public partial class Program;
-
-// Informa��es �teis:
-// Tipos do Sqlite - https://www.sqlite.org/datatype3.html
-
 
