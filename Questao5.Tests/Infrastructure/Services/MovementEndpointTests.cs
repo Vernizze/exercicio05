@@ -156,6 +156,103 @@ public sealed class MovementEndpointTests
             document.RootElement.GetProperty(CorrelationConstants.ProblemDetailsExtensionName).GetString());
     }
 
+    [Theory]
+    [InlineData("0")]
+    [InlineData("0.00")]
+    [InlineData("-1")]
+    [InlineData("-0.01")]
+    [InlineData("1.001")]
+    [InlineData("10000000000")]
+    public async Task Create_InvalidValue_ReturnsInvalidValueCodeWithoutPersisting(string valueLiteral)
+    {
+        using var factory = new SecurityWebApplicationFactory();
+        using var client = CreateClient(factory);
+
+        using var response = await PostRawMovementAsync(client, valueLiteral, "C");
+
+        await AssertBusinessRejectionAsync(factory, response, "INVALID_VALUE");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("c")]
+    [InlineData("d")]
+    [InlineData("X")]
+    [InlineData("CC")]
+    [InlineData("credito")]
+    public async Task Create_InvalidType_ReturnsInvalidTypeCodeWithoutPersisting(string movementType)
+    {
+        using var factory = new SecurityWebApplicationFactory();
+        using var client = CreateClient(factory);
+
+        using var response = await PostRawMovementAsync(client, "10.25", movementType);
+
+        await AssertBusinessRejectionAsync(factory, response, "INVALID_TYPE");
+    }
+
+    [Fact]
+    public async Task Create_InvalidValueAndType_ReturnsInvalidValueFirst()
+    {
+        using var factory = new SecurityWebApplicationFactory();
+        using var client = CreateClient(factory);
+
+        using var response = await PostRawMovementAsync(client, "0", "X");
+
+        await AssertBusinessRejectionAsync(factory, response, "INVALID_VALUE");
+    }
+
+    [Theory]
+    [InlineData("missing-account")]
+    [InlineData("382D323D-7067-ED11-8866-7D5DFA4A16C9")]
+    [InlineData("F475F943-7067-ED11-A06B-7E5DFA4A16C9")]
+    public async Task Create_InvalidValueForUnavailableAccount_ReturnsInvalidValueWithoutRevealingTheAccount(
+        string accountId)
+    {
+        using var factory = new SecurityWebApplicationFactory();
+        using var client = CreateClient(factory);
+
+        using var response = await PostRawMovementAsync(client, "-5", "C", accountId: accountId);
+
+        await AssertBusinessRejectionAsync(factory, response, "INVALID_VALUE");
+        Assert.DoesNotContain(factory.LoggerProvider.Entries, entry => entry.EventId.Id == 5301);
+    }
+
+    [Theory]
+    [InlineData("0", "C")]
+    [InlineData("10.25", "X")]
+    public async Task Create_RejectedValueOrType_DoesNotReserveTheIdempotencyKey(
+        string valueLiteral,
+        string movementType)
+    {
+        using var factory = new SecurityWebApplicationFactory();
+        using var client = CreateClient(factory);
+        var requestId = Guid.NewGuid().ToString("D");
+
+        using var rejected = await PostRawMovementAsync(client, valueLiteral, movementType, requestId);
+        using var accepted = await PostRawMovementAsync(client, "10.25", "C", requestId);
+
+        Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+        Assert.Equal(1L, CountRows(factory, "movimento"));
+    }
+
+    [Fact]
+    public async Task Create_InvalidValue_DoesNotEchoTheReceivedValueOrLogIt()
+    {
+        using var factory = new SecurityWebApplicationFactory();
+        using var client = CreateClient(factory);
+
+        using var response = await PostRawMovementAsync(client, "-98765.43", "C");
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.DoesNotContain("98765", body, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            factory.LoggerProvider.Entries,
+            entry => entry.EventId.Id == 5103 && entry.Message.Contains("98765", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task Create_AccountWithExternalSpacesWithinNormalizedLimit_IsAccepted()
     {
@@ -244,7 +341,6 @@ public sealed class MovementEndpointTests
         {
           "idRequisicao": "{{Guid.NewGuid():D}}",
           "idContaCorrente": "{{ActiveAccountId}}",
-          "valor": 0,
           "tipoMovimento": "C"
         }
         """,
@@ -252,7 +348,7 @@ public sealed class MovementEndpointTests
         {
           "idRequisicao": "{{Guid.NewGuid():D}}",
           "idContaCorrente": "{{ActiveAccountId}}",
-          "valor": 1.001,
+          "valor": null,
           "tipoMovimento": "C"
         }
         """,
@@ -260,8 +356,15 @@ public sealed class MovementEndpointTests
         {
           "idRequisicao": "{{Guid.NewGuid():D}}",
           "idContaCorrente": "{{ActiveAccountId}}",
-          "valor": 10000000000,
+          "valor": "dez",
           "tipoMovimento": "C"
+        }
+        """,
+        $$"""
+        {
+          "idRequisicao": "{{Guid.NewGuid():D}}",
+          "idContaCorrente": "{{ActiveAccountId}}",
+          "valor": 10.25
         }
         """,
         $$"""
@@ -269,10 +372,76 @@ public sealed class MovementEndpointTests
           "idRequisicao": "{{Guid.NewGuid():D}}",
           "idContaCorrente": "{{ActiveAccountId}}",
           "valor": 10.25,
-          "tipoMovimento": "c"
+          "tipoMovimento": null
+        }
+        """,
+        $$"""
+        {
+          "idRequisicao": "{{Guid.NewGuid():D}}",
+          "idContaCorrente": "   ",
+          "valor": 10.25,
+          "tipoMovimento": "C"
         }
         """
     };
+
+    private static async Task<HttpResponseMessage> PostRawMovementAsync(
+        HttpClient client,
+        string valueLiteral,
+        string movementType,
+        string? requestId = null,
+        string accountId = ActiveAccountId)
+    {
+        var body = $$"""
+            {
+              "idRequisicao": "{{requestId ?? Guid.NewGuid().ToString("D")}}",
+              "idContaCorrente": "{{accountId}}",
+              "valor": {{valueLiteral}},
+              "tipoMovimento": "{{movementType}}"
+            }
+            """;
+        using var content = new StringContent(body, Encoding.UTF8, "application/json");
+
+        return await client.PostAsync(
+            "/api/v1/movimentos",
+            content,
+            TestContext.Current.CancellationToken);
+    }
+
+    private static async Task AssertBusinessRejectionAsync(
+        SecurityWebApplicationFactory factory,
+        HttpResponseMessage response,
+        string expectedCode)
+    {
+        using var document = await ReadJsonAsync(response);
+        var root = document.RootElement;
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(expectedCode, root.GetProperty("code").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("detail").GetString()));
+        Assert.False(root.TryGetProperty("errors", out _));
+        Assert.Equal(
+            GetCorrelationHeader(response),
+            root.GetProperty(CorrelationConstants.ProblemDetailsExtensionName).GetString());
+        Assert.Equal(0L, CountRows(factory, "movimento"));
+        Assert.Equal(0L, CountRows(factory, "idempotencia"));
+        Assert.Contains(
+            factory.LoggerProvider.Entries,
+            entry => entry.EventId.Id == 5103 &&
+                entry.Message.Contains($"RuleCode: {expectedCode};", StringComparison.Ordinal));
+    }
+
+    private static long CountRows(SecurityWebApplicationFactory factory, string tableName)
+    {
+        using var connection = new SqliteConnection(
+            new SqliteConnectionStringBuilder { DataSource = factory.DatabasePath, Pooling = false }.ToString());
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT COUNT(*) FROM {tableName};";
+
+        return (long)command.ExecuteScalar()!;
+    }
 
     private static object CreateRequest(
         string? requestId = null,

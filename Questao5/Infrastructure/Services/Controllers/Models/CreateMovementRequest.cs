@@ -1,8 +1,11 @@
-﻿using Questao5.Application.Movements;
 using System.ComponentModel.DataAnnotations;
 
 namespace Questao5.Infrastructure.Services.Controllers.Models
 {
+    /// <summary>
+    /// Valida somente a estrutura da requisição. As regras de negócio sobre valor e tipo
+    /// (INVALID_VALUE e INVALID_TYPE) ficam no normalizador, para chegarem ao cliente com o código do enunciado.
+    /// </summary>
     public sealed class CreateMovementRequest : IValidatableObject
     {
         [Required]
@@ -16,8 +19,8 @@ namespace Questao5.Infrastructure.Services.Controllers.Models
         [Required]
         public decimal? Valor { get; init; }
 
-        [Required]
-        [RegularExpression("^[CD]$")]
+        // Texto vazio é um tipo presente e inválido (INVALID_TYPE), não um campo ausente.
+        [Required(AllowEmptyStrings = true)]
         public string? TipoMovimento { get; init; }
 
         public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
@@ -30,21 +33,6 @@ namespace Questao5.Infrastructure.Services.Controllers.Models
                     "A identificação da conta corrente deve possuir entre 1 e 37 caracteres.",
                     [nameof(IdContaCorrente)]);
             }
-
-            if (Valor.HasValue &&
-                (Valor.Value <= 0 ||
-                 Valor.Value > MovementRequestNormalizer.MaximumAmount ||
-                 GetScale(Valor.Value) > 2))
-            {
-                yield return new ValidationResult(
-                    "O valor deve ser positivo, possuir no máximo duas casas decimais e respeitar o limite permitido.",
-                    [nameof(Valor)]);
-            }
-        }
-
-        private static int GetScale(decimal value)
-        {
-            return (decimal.GetBits(value)[3] >> 16) & 0x7F;
         }
     }
 }

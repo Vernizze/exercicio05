@@ -98,12 +98,14 @@ Os erros usam `application/problem+json`, com `code`, `detail` e `correlationId`
 | token ausente ou inválido | 401 | `UNAUTHENTICATED` |
 | conta não cadastrada, ou de outro correntista | 400 | `INVALID_ACCOUNT` |
 | conta própria inativa | 400 | `INACTIVE_ACCOUNT` |
+| valor zero, negativo, acima do limite ou com mais de duas casas | 400 | `INVALID_VALUE` |
+| tipo de movimento diferente de `C` ou `D` | 400 | `INVALID_TYPE` |
 | campo ausente ou em formato inválido | 400 | erro de validação por campo, sem `code` |
 | chave de idempotência reutilizada com outros dados | 409 | `IDEMPOTENCY_CONFLICT` |
 | limite de requisições excedido | 429 | `RATE_LIMIT_EXCEEDED` |
 | tempo limite excedido | 504 | `REQUEST_TIMEOUT` |
 
-Limitação conhecida: valor não positivo e tipo de movimento diferente de `C`/`D` são respondidos hoje como erro de validação por campo, sem os códigos `INVALID_VALUE` e `INVALID_TYPE` pedidos pelo enunciado. A pendência está registrada como TODO-003 em `TODO.md`.
+Valor e tipo são conferidos antes da conta: uma requisição com valor inválido responde `INVALID_VALUE` mesmo que a conta não exista.
 
 ## Sobre a autenticação
 

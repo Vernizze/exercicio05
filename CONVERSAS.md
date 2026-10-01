@@ -922,3 +922,62 @@ Com a Entrega G, a sequência autorizada nesta interação está concluída: F0 
 Permanecem pendentes de decisão do usuário: TODO-003, que é requisito do enunciado; TODO-004 e a parte de TODO-005 referente ao handler de movimentação, que são pontos extras; a forma de entrega (TODO-006); e o encerramento formal dos itens de segurança que dependem de infraestrutura.
 
 ---
+
+## Interação 034 — 1º de outubro de 2026
+
+**Modo: Plan**
+
+### Usuário
+
+> Vamos com TODO-003: devolver INVALID_VALUE e INVALID_TYPE na movimentação.
+
+### Claude Code (assistente)
+
+Foi elaborado e submetido à aprovação um plano para o TODO-003, sem alterar arquivos do projeto.
+
+O diagnóstico: o DTO `CreateMovementRequest` validava valor e tipo antes de o comando ser enviado, de modo que essas falhas eram respondidas como erro de validação por campo, sem `code`. Os códigos `INVALID_VALUE` e `INVALID_TYPE` já existiam e já eram testados em `MovementRequestNormalizer`, mas eram inalcançáveis pelo endpoint.
+
+A abordagem proposta foi retirar do DTO as regras de negócio sobre valor e tipo, mantendo nele apenas a validação estrutural, para que o normalizador lance a `BusinessRuleException` e o tratamento global de erros produza a resposta com `code`, pelo mesmo caminho de `INVALID_ACCOUNT`. Não seria necessário código novo de tratamento de erro.
+
+Duas decisões foram destacadas para o usuário:
+
+1. campo ausente ou `null` continua sendo erro estrutural, sem `code`, porque o enunciado não define tipo para requisição incompleta; somente valor e tipo presentes e inválidos recebem os códigos do enunciado;
+2. valor e tipo são conferidos antes de qualquer acesso ao banco, de modo que uma requisição com valor inválido para conta inexistente ou alheia responde `INVALID_VALUE`, sem revelar nada sobre a conta; com os dois inválidos, responde `INVALID_VALUE`.
+
+O plano também listou os testes, a documentação a atualizar, o que ficava fora do escopo (TODO-004, TODO-005, TODO-006 e itens SEC de infraestrutura) e a verificação por testes, gate e ambiente Compose.
+
+---
+
+## Interação 035 — 1º de outubro de 2026
+
+**Modo: Act**
+
+### Usuário
+
+> Aprovou o plano da Interação 034 e autorizou sua execução.
+
+### Claude Code (assistente)
+
+A execução partiu do commit `53f6d51`, no branch `20260930`, com workspace limpo.
+
+Os testes foram escritos antes da mudança. Com o código original, 17 dos novos casos falharam pelo motivo esperado: a resposta trazia `errors` e não trazia `code`. Em seguida, `CreateMovementRequest` foi alterado: saíram a expressão regular de `TipoMovimento` e a conferência de `Valor`, e `TipoMovimento` passou a aceitar texto vazio na validação estrutural, para que `""` chegue ao normalizador como tipo presente e inválido. `MovementRequestNormalizer`, `GlobalExceptionHandler` e `MovementController` não foram alterados. Depois da mudança, todos os testes passaram.
+
+Comportamento resultante da movimentação:
+
+- valor numérico zero, negativo, acima de `9999999999.99` ou com mais de duas casas responde HTTP 400 em `application/problem+json`, com `code` `INVALID_VALUE`, mensagem descritiva e correlation ID;
+- tipo presente e diferente de `C` ou `D`, inclusive vazio, em branco, minúsculo ou com mais de um caractere, responde `INVALID_TYPE` do mesmo modo;
+- campo ausente ou `null`, `valor` não numérico, JSON malformado, propriedade desconhecida, UUID fora do formato e conta vazia continuam respondendo erro de validação por campo, sem `code`;
+- valor e tipo são conferidos antes da idempotência e da conta: valor inválido para conta inexistente, de outro correntista ou inativa responde `INVALID_VALUE`, sem emitir o evento 5301;
+- a rejeição não grava movimento, não reserva a chave de idempotência, emite o evento 5103 com o código e não repete o valor recebido na resposta nem no log.
+
+Os testes HTTP de valor e tipo foram movidos do caso de erro estrutural para testes próprios, e o caso de erro estrutural recebeu campo ausente, `null`, `valor` não numérico e conta em branco. A suíte passou de 211 para 233 testes.
+
+O comportamento foi conferido também no ambiente Docker Compose, reconstruído com a mudança: `valor: 0` respondeu `INVALID_VALUE`, `tipoMovimento: "X"` respondeu `INVALID_TYPE`, a ausência de `valor` respondeu erro de validação por campo e a mesma chave rejeitada foi aceita em seguida com dados válidos. O ambiente foi removido com seus volumes.
+
+Foram atualizados `ESPECIFICACAO_MOVIMENTACAO.md` (fronteira entre erro estrutural e de negócio, precedência e matriz de testes), `README.md` (a limitação conhecida foi removida e os dois códigos entraram na tabela de erros) e `TODO.md` (TODO-003 concluído). A documentação Swagger dos novos corpos de erro não foi tratada e continua em TODO-004.
+
+O gate completo foi executado ao final e passou: restore bloqueado, auditoria direta e transitiva sem vulnerabilidades conhecidas, secret scanning sem achados, formatação e analisadores aprovados, build Release com zero avisos e zero erros, 233 testes aprovados e cobertura com nova execução em 233/233. A fixture `Questao5/database.sqlite` manteve o SHA-256 `E355A3EDB7D73E7784A7467513248D530C27CC989C624A35D13A188B2AA8DD3C`. O TODO-003 foi encerrado em commit isolado.
+
+Permanecem pendentes de decisão do usuário: TODO-004, a parte de TODO-005 referente ao handler de movimentação, a forma de entrega de TODO-006 e o encerramento formal dos itens de segurança que dependem de infraestrutura.
+
+---

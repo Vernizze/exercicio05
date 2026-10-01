@@ -59,6 +59,8 @@ O endpoint exige JWT válido. O correntista é identificado somente pela claim `
 
 O DTO é fechado e contém somente esses quatro campos. Propriedades desconhecidas são rejeitadas para impedir overposting e erros silenciosos de contrato.
 
+O DTO valida somente a **estrutura** da requisição: presença dos quatro campos, formato do UUID, tamanho da conta e `valor` numérico. As regras de **negócio** sobre valor e tipo não ficam no DTO: são aplicadas pelo normalizador, para que cheguem ao cliente com os códigos `INVALID_VALUE` e `INVALID_TYPE` exigidos pelo enunciado. Um campo ausente ou `null` é erro estrutural, sem `code`; um valor ou tipo presente e inválido, inclusive texto vazio em `tipoMovimento`, é erro de negócio.
+
 `idRequisicao` não é aceito no header `X-Correlation-ID`. Correlação e idempotência têm semânticas distintas.
 
 ### 2.3 Sucesso e repetição idêntica
@@ -85,12 +87,12 @@ Erros usam `application/problem+json`, o tratamento global existente e a extens�
 | Situação | HTTP | `code` | Observação |
 | --- | --- | --- | --- |
 | Token ausente ou inválido | 401 | `UNAUTHENTICATED` | header `WWW-Authenticate: Bearer`; motivo específico não devolvido |
-| JSON inválido, campo ausente, formato ou limite inválido | 400 | validação por campo | resposta de validação do ASP.NET Core |
+| JSON inválido, propriedade desconhecida, campo ausente ou `null`, `valor` não numérico, UUID fora do formato, conta vazia ou acima de 37 caracteres | 400 | validação por campo, sem `code` | resposta de validação do ASP.NET Core |
 | Conta não cadastrada | 400 | `INVALID_ACCOUNT` | exigido pelo enunciado |
 | Conta de outro correntista ou sem titularidade | 400 | `INVALID_ACCOUNT` | corpo idêntico ao de conta não cadastrada |
 | Conta própria inativa | 400 | `INACTIVE_ACCOUNT` | exigido pelo enunciado |
-| Valor não positivo, acima do limite ou com escala maior que 2 | 400 | `INVALID_VALUE` | regra de negócio estável |
-| Tipo diferente de `C` ou `D` | 400 | `INVALID_TYPE` | regra de negócio estável |
+| Valor numérico não positivo, acima do limite ou com escala maior que 2 | 400 | `INVALID_VALUE` | exigido pelo enunciado; Problem Details com `detail` e `code` |
+| Tipo presente e diferente de `C` ou `D`, inclusive vazio, minúsculo ou com mais de um caractere | 400 | `INVALID_TYPE` | exigido pelo enunciado; Problem Details com `detail` e `code` |
 | Mesma chave com requisição normalizada diferente | 409 | `IDEMPOTENCY_CONFLICT` | conflito, não uma nova execução |
 | Corpo acima de 4 KiB | 413 | não aplicável | Problem Details correlacionado |
 | Media type diferente de `application/json` | 415 | não aplicável | Problem Details correlacionado |
@@ -99,6 +101,10 @@ Erros usam `application/problem+json`, o tratamento global existente e a extens�
 | Timeout do servidor | 504 | `REQUEST_TIMEOUT` | Problem Details correlacionado |
 
 O conflito idempotente usa HTTP 409 porque a requisição isoladamente pode ser válida, mas é incompatível com o recurso de idempotência já identificado pela chave.
+
+A precedência das verificações é: autenticação, validação estrutural, `INVALID_VALUE`, `INVALID_TYPE`, idempotência, `INVALID_ACCOUNT`, titularidade e `INACTIVE_ACCOUNT`. Valor e tipo são conferidos antes de qualquer acesso ao banco: uma requisição com valor ou tipo inválido responde o código correspondente mesmo que a conta não exista, pertença a outro correntista ou esteja inativa, sem revelar nada sobre a conta e sem emitir o evento 5301. Com valor e tipo inválidos ao mesmo tempo, a resposta é `INVALID_VALUE`. As mensagens não repetem o valor recebido.
+
+Até a correção do TODO-003, em 1º de outubro de 2026, o DTO também validava valor e tipo; por isso essas falhas eram respondidas como erro de validação por campo e os dois códigos não chegavam ao cliente.
 
 ## 3. Contrato monetário
 
@@ -171,7 +177,7 @@ Movimento e registro idempotente sofrem rollback. Uma nova tentativa pode execut
 
 ### 4.5 Algoritmo transacional e concorrência
 
-1. Validar JSON, tamanhos, UUID, escala, limite e tipo e construir a requisição canônica antes de abrir a transação.
+1. Validar a estrutura da requisição no DTO; em seguida, no normalizador, validar valor (`INVALID_VALUE`) e tipo (`INVALID_TYPE`) e construir a requisição canônica, tudo antes de abrir a transação.
 2. Abrir uma conexão pela `ISqliteConnectionFactory`.
 3. Abrir transação imediata com `BeginTransaction(deferred: false)`, obtendo a reserva de escritor antes das leituras decisórias.
 4. Consultar `idempotencia` pela chave normalizada.
@@ -262,9 +268,11 @@ O acesso a conta, titularidade, movimento, saldo e idempotência não é dividid
 ### Contrato e validação HTTP
 
 - sucesso de crédito e débito retorna HTTP 200 e UUID do movimento;
-- campos obrigatórios, JSON inválido, propriedade desconhecida e corpo acima de 4 KiB;
-- UUIDs, comprimentos, valor zero, negativo, acima do máximo e com mais de duas casas;
-- tipos vazio, minúsculo, longo ou diferente de `C`/`D`;
+- campos ausentes ou `null`, `valor` não numérico, JSON inválido, propriedade desconhecida, UUID fora do formato, conta vazia e corpo acima de 4 KiB retornam erro estrutural;
+- valor zero, negativo, acima do máximo e com mais de duas casas retorna `INVALID_VALUE`;
+- tipo vazio, em branco, minúsculo, longo ou diferente de `C`/`D` retorna `INVALID_TYPE`;
+- valor e tipo inválidos juntos retornam `INVALID_VALUE`, e valor inválido para conta inexistente, alheia ou inativa retorna `INVALID_VALUE` sem evento 5301;
+- as rejeições por valor e tipo não gravam dados, não reservam a chave de idempotência, emitem o evento 5103 com o código e não repetem o valor recebido;
 - Problem Details contém código e correlation ID sem informação interna.
 
 ### Regras e persistência
