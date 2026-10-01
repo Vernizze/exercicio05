@@ -14,6 +14,7 @@ using Questao5.Infrastructure.Services.Correlation;
 using Questao5.Infrastructure.Services.Errors;
 using Questao5.Infrastructure.Services.Identifiers;
 using Questao5.Infrastructure.Services.Movements;
+using Questao5.Infrastructure.Services.OpenApi;
 using Questao5.Infrastructure.Services.Security;
 using Questao5.Infrastructure.Sqlite;
 using System.Globalization;
@@ -272,6 +273,30 @@ builder.Services.AddSingleton<IDatabaseBootstrap, DatabaseBootstrap>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Questão 5 — API de conta corrente",
+        Version = "v1",
+        Description =
+            "Movimentação e consulta de saldo de conta corrente.\n\n" +
+            "**Autenticação.** Os dois endpoints exigem um JWT no header `Authorization: Bearer <token>`. " +
+            "A claim `sub` identifica o correntista, e cada conta só pode ser movimentada ou consultada pelo seu titular.\n\n" +
+            "**Erros.** As respostas de erro usam `application/problem+json`. Falhas de regra de negócio trazem " +
+            "`code` com o tipo da falha e `detail` com a mensagem; erros estruturais trazem `errors` por campo.\n\n" +
+            "**Correlação.** Toda resposta devolve o header `X-Correlation-ID`. O cliente pode enviar o seu " +
+            "(até 64 caracteres entre letras, números, ponto, hífen e sublinhado); caso contrário, a API gera um.\n\n" +
+            "**Idempotência.** Na movimentação, `idRequisicao` é a chave de idempotência: repetir a mesma " +
+            "requisição devolve o mesmo resultado, sem criar outro movimento."
+    });
+
+    var xmlDocumentationPath = Path.Combine(
+        AppContext.BaseDirectory,
+        $"{Assembly.GetExecutingAssembly().GetName().Name}.xml");
+    options.IncludeXmlComments(xmlDocumentationPath, includeControllerXmlComments: true);
+    options.SupportNonNullableReferenceTypes();
+    options.OperationFilter<ResponseDocumentationOperationFilter>();
+    options.SchemaFilter<ProblemDetailsSchemaFilter>();
+
     options.AddSecurityDefinition(JwtBearerDefaults.AuthenticationScheme, new OpenApiSecurityScheme
     {
         Type = SecuritySchemeType.Http,

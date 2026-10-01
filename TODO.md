@@ -38,7 +38,9 @@ A sequência F0, F1, F2, E e G foi autorizada pelo usuário em 1º de outubro de
 
 TODO-003 (códigos `INVALID_VALUE` e `INVALID_TYPE`) foi autorizado e concluído em seguida, na mesma data. Com ele, os dois serviços do enunciado e todas as validações com tipo de falha que ele exige estão implementados.
 
-Próximos passos, todos dependentes de decisão do usuário: TODO-004 (documentação Swagger), TODO-005 (teste unitário do handler de movimentação), a forma de entrega de TODO-006 e o encerramento formal dos itens SEC que dependem de infraestrutura.
+TODO-004 (documentação Swagger) e TODO-005 (teste unitário do handler de movimentação) foram autorizados e concluídos na sequência, também na mesma data. Com eles, os pontos extras do enunciado estão atendidos: Dapper, CQRS, Mediator, Swagger documentado com exemplos e testes unitários com NSubstitute.
+
+Próximos passos, todos dependentes de decisão do usuário: a forma de entrega de TODO-006 e o encerramento formal dos itens SEC que dependem de infraestrutura.
 
 ### Entrega C4 — limpeza, documentação, gate e commit funcional
 
@@ -185,7 +187,7 @@ O Compose é um ambiente de demonstração local, sem proxy, TLS, pipeline ou pl
 
 ### Pendências identificadas em 1º de outubro de 2026
 
-Achados do levantamento de fechamento de escopo (Interação 029 de `CONVERSAS.md`). O usuário decidiu tratar primeiro a consulta de saldo e, concluída a sequência, autorizou o TODO-003. Os demais itens aguardam decisão e não possuem autorização de execução.
+Achados do levantamento de fechamento de escopo (Interação 029 de `CONVERSAS.md`). O usuário decidiu tratar primeiro a consulta de saldo e, concluída a sequência, autorizou o TODO-003 e depois o TODO-004 e o TODO-005. Resta em aberto a forma de entrega do TODO-006.
 
 #### TODO-003 — Devolver `INVALID_VALUE` e `INVALID_TYPE` na resposta HTTP
 
@@ -201,11 +203,15 @@ Achados do levantamento de fechamento de escopo (Interação 029 de `CONVERSAS.m
 
 #### TODO-004 — Completar a documentação Swagger
 
-- **Estado:** Pendente — aguarda decisão
+- **Estado:** Concluído em 1º de outubro de 2026
 - **Prioridade:** Média — ponto extra do enunciado
-- **Evidência:** `AddSwaggerGen()` sem configuração; não há descrição de atributos, exemplos nem os retornos 429, 500 e 504.
+- **Evidência de origem:** `AddSwaggerGen()` sem configuração; não havia descrição de atributos, exemplos nem os retornos 429, 500 e 504.
+- **Evidência de conclusão:** o documento OpenAPI passou a trazer descrição geral da API, resumo e descrição das duas operações, todos os retornos possíveis (movimentação: 200, 400, 401, 409, 413, 415, 429, 500 e 504; saldo: 200, 400, 401, 429, 500 e 504), descrição e exemplo de cada atributo dos DTOs e do corpo de erro, exemplos nomeados para cada situação de erro e os headers de resposta. As descrições vêm de comentários XML; os exemplos de erro, os headers e os atributos do Problem Details vêm de `ResponseDocumentationOperationFilter`, `ProblemDetailsSchemaFilter` e `ProblemExamples`. Nenhuma dependência foi acrescentada e o Swagger continua restrito a Development.
+- **Garantia contra divergência:** um teste compara cada exemplo de erro com a resposta real do endpoint, atributo por atributo. Esse teste já apontou, durante a entrega, que o 429 real não possui `type` e que o 413 real não possui `type` nem `traceId`; os exemplos foram corrigidos para refletir o comportamento, que não foi alterado.
+- **Decisão:** o HTTP 400 é documentado com um único schema (`ProblemDetails`) e exemplos nomeados para os dois formatos de corpo, o de regra de negócio (com `code`) e o estrutural (com `errors`).
+- **Supressão registrada:** o aviso CS1591 (membro público sem comentário XML) é suprimido somente no projeto `Questao5`, com justificativa no próprio `Questao5.csproj`.
 
-- [ ] Atributos, requisições e todos os retornos possíveis documentados, com exemplos.
+- [x] Atributos, requisições e todos os retornos possíveis documentados, com exemplos.
 
 #### TODO-005 — Testes unitários com NSubstitute
 
@@ -706,6 +712,9 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 - **Evidência F2:** a suíte passou a ter 144 testes. Foram acrescentados os casos de migração (seed de titularidades, preenchimento da projeção a partir de banco na versão 1, migração de cópia da fixture, preservação em execuções repetidas, rejeição de tabelas incompatíveis, de valores persistidos fora do contrato e de projeção divergente), de titularidade no store e no HTTP (conta alheia, conta alheia inativa, conta sem titular, corpo idêntico ao de conta inexistente, evento 5301), de idempotência entre correntistas e com registro `v1`, de projeção (centavos, versão, replay, rollback, ausência da linha, concorrência sem perda de atualização), de reconciliação e de limite por correntista.
 - **Evidência E:** a suíte passou a ter 211 testes. Foram acrescentados os testes unitários do handler de saldo com NSubstitute, os testes do store de leitura com SQLite real, os testes HTTP da consulta (contrato, titularidade, validação, limites, timeout, logs, concorrência com movimentações e ausência de efeito colateral), os testes de formatação do instante e de fingerprint e a atualização do inventário OpenAPI para os dois endpoints.
 - **Evidência TODO-003:** a suíte passou a ter 233 testes. Foram acrescentados os casos HTTP de `INVALID_VALUE` e `INVALID_TYPE`, de precedência entre valor, tipo e conta, de não reserva da chave de idempotência e de ausência do valor recebido na resposta e no log; os casos de campo ausente, `null` e `valor` não numérico passaram a compor o teste de erro estrutural.
+- **Evidência TODO-005:** a suíte passou a ter 248 testes, com os testes unitários de `CreateMovementCommandHandler` usando NSubstitute.
+- **Evidência TODO-004:** a suíte passou a ter 294 testes, com os testes do documento OpenAPI: resumo, descrição e conjunto exato de status por operação, descrição e exemplo de cada atributo, headers, exemplos nomeados por situação de erro e a comparação de cada exemplo com a resposta real.
+- **Correções da infraestrutura de testes no TODO-004:** foi eliminada uma falha intermitente, observada em cerca de uma a cada oito execuções: o descarte do banco temporário chamava `SqliteConnection.ClearAllPools()`, que é global e podia fechar a conexão de outro teste em paralelo. Os bancos temporários passaram a ser abertos sem pool, e a chamada foi removida; a suíte foi então executada 40 vezes seguidas sem falha. Também foi corrigido um teste de inicialização que deixava uma pasta temporária vazia para trás a cada caso.
 
 #### Critérios de aceite
 
@@ -813,7 +822,7 @@ Os itens abaixo não autorizam automaticamente alterações funcionais. Sua exec
 
 Este procedimento foi cumprido. TODO-001 recebeu autorização própria e foi concluído em 1º de outubro de 2026. TODO-002 foi planejado na Entrega B, implementado nas entregas C1 a C3 e concluído em 1º de outubro de 2026. C4 foi concluída e a Entrega D formalizou o planejamento da consulta de saldo. Em 1º de outubro de 2026 o usuário autorizou a sequência F0, F1, F2, E e G descrita no roadmap.
 
-Não existe, neste documento, autorização antecipada para implementar outras pendências funcionais; TODO-003 foi autorizado e concluído, e TODO-004 a TODO-006 aguardam decisão.
+Não existe, neste documento, autorização antecipada para implementar outras pendências funcionais; TODO-003, TODO-004 e TODO-005 foram autorizados e concluídos, e a forma de entrega do TODO-006 aguarda decisão.
 
 ## Guardrails permanentes de segurança
 
@@ -854,3 +863,4 @@ Estes itens são controles contínuos e não devem ser marcados globalmente como
 - **1º de outubro de 2026:** Entrega E implementou a consulta de saldo `GET /api/v1/contas/{idContaCorrente}/saldo`, restrita ao titular da conta, lendo o saldo consolidado em centavos de `saldo_conta` em um único snapshot. A resposta traz número da conta, nome do titular, instante UTC em formato round-trip e saldo decimal, com `Cache-Control: no-store`; os erros seguem o contrato da movimentação. A consulta recebeu limites próprios por correntista, timeout e os eventos 5200–5203. O handler foi coberto por testes unitários com NSubstitute. SEC-002, SEC-005 e SEC-017 tiveram os critérios dependentes do saldo atendidos. A suíte passou de 144 para 211 testes e o gate completo foi aprovado; a fixture manteve o SHA-256 esperado. TODO-003, TODO-004 e TODO-006 permanecem pendentes de decisão.
 - **1º de outubro de 2026:** Entrega G empacotou o ambiente do desafio com `Dockerfile`, `docker-compose.yml` e o emissor de teste `mock-oauth2-server` 6.0.4, com imagens fixadas por digest, portas publicadas somente em `127.0.0.1`, contêineres sem privilégios e sistema de arquivos somente leitura. O ambiente foi verificado de ponta a ponta nos dois endpoints e removido. Foi criado o `README.md` para os avaliadores. SEC-011, SEC-012, SEC-021 e SEC-022 foram reavaliados; TODO-006 ficou parcialmente atendido. Nenhum código da aplicação foi alterado; o gate completo foi aprovado com 211 testes. A sequência F0, F1, F2, E e G está concluída.
 - **1º de outubro de 2026:** TODO-003 concluído após autorização específica. As regras de negócio sobre valor e tipo saíram do DTO da movimentação, que passou a validar somente a estrutura; valor e tipo inválidos agora respondem HTTP 400 com `code` `INVALID_VALUE` e `INVALID_TYPE`, conferidos antes de qualquer acesso ao banco. Campo ausente continua sendo erro estrutural, sem `code`. A suíte passou de 211 para 233 testes e o gate completo foi aprovado; a fixture manteve o SHA-256 esperado. TODO-004, TODO-005 e TODO-006 permanecem pendentes de decisão.
+- **1º de outubro de 2026:** TODO-005 e TODO-004 concluídos após autorização específica. O handler de movimentação recebeu testes unitários com NSubstitute, sem mudança em código de produção. O documento OpenAPI passou a trazer descrição geral, resumo e descrição das operações, todos os retornos possíveis, descrição e exemplo de cada atributo, exemplos nomeados de cada situação de erro e headers de resposta, com um teste que compara cada exemplo com a resposta real; nenhuma dependência foi acrescentada e nenhum comportamento foi alterado. Foi eliminada uma falha intermitente preexistente na infraestrutura de testes, causada por `SqliteConnection.ClearAllPools()`. A suíte passou de 233 para 294 testes e o gate completo foi aprovado; a fixture manteve o SHA-256 esperado. Restam a forma de entrega do TODO-006 e os itens SEC de infraestrutura.

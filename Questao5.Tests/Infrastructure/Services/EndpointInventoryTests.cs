@@ -1,9 +1,6 @@
 using System.Net;
 using System.Text.Json;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Extensions.Configuration;
-using Questao5.Tests.Infrastructure.Sqlite;
 
 namespace Questao5.Tests.Infrastructure.Services;
 
@@ -100,35 +97,5 @@ public sealed class EndpointInventoryTests
         Assert.Equal("bearer", scheme.GetProperty("scheme").GetString());
         Assert.True(document.RootElement.GetProperty("security")[0].TryGetProperty("Bearer", out _));
         Assert.True(operation.GetProperty("responses").TryGetProperty("401", out _));
-    }
-
-    private sealed class SwaggerWebApplicationFactory : WebApplicationFactory<Program>
-    {
-        private readonly TemporarySqliteDatabase database = new();
-
-        protected override void ConfigureWebHost(IWebHostBuilder builder)
-        {
-            builder.UseEnvironment("Development");
-
-            // Program.cs lê DatabaseName antes de ConfigureAppConfiguration ser aplicado.
-            builder.UseSetting("DatabaseName", database.ConnectionString);
-            builder.ConfigureAppConfiguration((_, configurationBuilder) =>
-            {
-                configurationBuilder.AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    ["DatabaseName"] = database.ConnectionString
-                });
-            });
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            base.Dispose(disposing);
-
-            if (disposing)
-            {
-                database.Dispose();
-            }
-        }
     }
 }

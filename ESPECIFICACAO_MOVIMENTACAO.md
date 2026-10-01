@@ -319,6 +319,12 @@ O acesso a conta, titularidade, movimento, saldo e idempotência não é dividid
 - fingerprint é estável para a mesma chave;
 - gate completo, auditoria, secret scanning, build sem avisos e cobertura são executados.
 
+### Documentação OpenAPI
+
+O contrato desta especificação é publicado no documento OpenAPI (Swagger, somente em Development): resumo e descrição da operação, os retornos 200, 400, 401, 409, 413, 415, 429, 500 e 504, descrição e exemplo de cada atributo e exemplos nomeados de cada situação de erro. O HTTP 400 é documentado com um único schema e exemplos para os dois formatos de corpo, o de regra de negócio (com `code`) e o estrutural (com `errors`).
+
+Um teste compara cada exemplo de erro com a resposta real do endpoint. Por isso os exemplos registram também as particularidades do comportamento atual: a resposta 429 não traz `type`, e a resposta 413 não traz `type` nem `traceId`.
+
 ## 9. Governança de mudanças
 
 O TODO-002 foi concluído em 1º de outubro de 2026 após autorizações específicas para as entregas C1, C2 e C3. Qualquer mudança futura de rota, DTO, status HTTP, semântica idempotente, limite monetário ou estratégia transacional deverá atualizar este documento antes do código.

@@ -981,3 +981,76 @@ O gate completo foi executado ao final e passou: restore bloqueado, auditoria di
 Permanecem pendentes de decisão do usuário: TODO-004, a parte de TODO-005 referente ao handler de movimentação, a forma de entrega de TODO-006 e o encerramento formal dos itens de segurança que dependem de infraestrutura.
 
 ---
+
+## Interação 036 — 1º de outubro de 2026
+
+**Modo: Plan**
+
+### Usuário
+
+> vamos aos TODO-004 e a parte pendente de  TODO-005
+
+### Claude Code (assistente)
+
+Foi elaborado e submetido à aprovação um plano para os dois itens, sem alterar arquivos do projeto.
+
+Para o TODO-005, o plano previa um arquivo de testes unitários de `CreateMovementCommandHandler`, com `IMovementStore` substituído por NSubstitute, sem mudança em código de produção.
+
+Para o TODO-004, o plano previa documentar o contrato no Swagger sem dependência nova: comentários XML para resumos, descrições e exemplos de atributos; todos os retornos possíveis declarados nas duas operações; e filtros próprios para os exemplos nomeados das respostas de erro, os headers de resposta e os atributos do corpo de erro. Foi consultada a documentação do pacote Microsoft.OpenApi 2.7.5 instalado para confirmar a existência da API de exemplos. O plano incluiu um teste que compara cada exemplo de erro com a resposta real do endpoint, para que a documentação não divirja do comportamento.
+
+Foi destacada uma decisão: o HTTP 400 tem dois formatos de corpo e seria documentado com um único schema e exemplos nomeados para os dois, em vez de `oneOf`. Ficaram fora do escopo o TODO-006, os itens SEC de infraestrutura, a exposição do Swagger fora de Development e qualquer mudança de comportamento dos endpoints.
+
+---
+
+## Interação 037 — 1º de outubro de 2026
+
+**Modo: Act**
+
+### Usuário
+
+> Aprovou o plano da Interação 036 e autorizou sua execução.
+
+### Claude Code (assistente)
+
+A execução partiu do commit `aa81507`, no branch `20260930`, com workspace limpo.
+
+#### TODO-005 — testes unitários do handler de movimentação
+
+Foi criado `CreateMovementCommandHandlerTests`, com `IMovementStore` substituído por NSubstitute. Os testes verificam que a requisição chega ao store já normalizada, com a representação canônica `v2`; que a resposta do store é devolvida sem alteração, inclusive o indicador de repetição; que valor, tipo, chave e titular inválidos são rejeitados sem que o store seja chamado; que as exceções do store são propagadas; e que o `CancellationToken` é repassado. Nenhum código de produção foi alterado. A suíte passou de 233 para 248 testes.
+
+O item foi encerrado no commit `614019b`. Antes desse commit foram executados o build Release, a suíte completa e a verificação de formatação; o gate completo foi executado somente ao final da interação, sobre o conjunto das duas entregas.
+
+#### TODO-004 — documentação Swagger
+
+O documento OpenAPI passou a trazer:
+
+- descrição geral da API, com autenticação, formato dos erros, header de correlação e idempotência;
+- resumo e descrição das duas operações e descrição de cada retorno;
+- todos os retornos possíveis: 200, 400, 401, 409, 413, 415, 429, 500 e 504 na movimentação; 200, 400, 401, 429, 500 e 504 no saldo;
+- descrição e exemplo de cada atributo da requisição, das duas respostas de sucesso e do corpo de erro, incluindo as extensões `code`, `correlationId`, `traceId` e `errors`;
+- exemplos nomeados para cada situação de erro: `INVALID_VALUE`, `INVALID_TYPE`, `INVALID_ACCOUNT`, `INACTIVE_ACCOUNT`, erro estrutural, `UNAUTHENTICATED`, `IDEMPOTENCY_CONFLICT`, corpo acima do limite, tipo de conteúdo não suportado, `RATE_LIMIT_EXCEEDED`, erro interno e `REQUEST_TIMEOUT`;
+- os headers `X-Correlation-ID` em todas as respostas, `WWW-Authenticate` no 401, `Retry-After` no 429 e `Cache-Control` no 200 do saldo.
+
+As descrições vêm de comentários XML nos controllers e nos DTOs; o projeto `Questao5` passou a gerar o arquivo de documentação. O aviso CS1591 foi suprimido somente nesse projeto, com justificativa no próprio arquivo de projeto. Os exemplos de erro, os headers e os atributos do corpo de erro vêm de três classes novas em `Questao5/Infrastructure/Services/OpenApi`. Nenhuma dependência foi acrescentada, nenhum comportamento dos endpoints foi alterado e o Swagger continua restrito a Development.
+
+Os testes do documento verificam o conjunto exato de status por operação, a presença de descrição e exemplo em cada atributo, os headers, os exemplos esperados por status e, para cada um dos 19 exemplos de erro, a igualdade com a resposta real do endpoint, atributo por atributo. Esse último teste apontou divergências na primeira execução, corrigidas nos exemplos e não no comportamento: a resposta 429 real não possui `type`, e a resposta 413 real não possui `type` nem `traceId`. Também mostrou que uma conta composta só por espaços é rejeitada pela mensagem padrão em inglês do framework, e não pela mensagem própria em português; o exemplo de erro estrutural passou a usar o caso de conta acima de 37 caracteres, que produz a mensagem em português. A suíte passou de 248 para 294 testes.
+
+O documento foi conferido também no ambiente Docker Compose reconstruído: o `swagger.json` servido pelo contêiner contém os resumos, os status, os exemplos e os headers, e a interface do Swagger respondeu normalmente. O ambiente foi removido com seus volumes.
+
+#### Correções na infraestrutura de testes
+
+Durante a entrega apareceu uma falha intermitente em um teste de bootstrap que não havia sido alterado, em cerca de uma a cada oito execuções. A causa era preexistente: o descarte do banco temporário de um teste chamava `SqliteConnection.ClearAllPools()`, que é global e podia fechar a conexão de outro teste em execução paralela; com mais testes, a chance de colisão aumentou. Os bancos temporários passaram a ser abertos sem pool e a chamada global foi removida. Depois da correção, a suíte foi executada 40 vezes seguidas sem falha.
+
+Também foi corrigido um teste de inicialização, criado na Entrega F1, que deixava uma pasta temporária vazia para trás a cada caso, e os testes novos passaram a descartar as fábricas que criam. Permanecem em `%TEMP%\Questao5.Tests` pastas deixadas por execuções anteriores a essas correções; elas não foram removidas.
+
+#### Fechamento
+
+Foram atualizados `ESPECIFICACAO_MOVIMENTACAO.md` e `ESPECIFICACAO_SALDO.md` (nota sobre a documentação OpenAPI), `README.md` e `TODO.md` (TODO-004 e TODO-005 concluídos).
+
+A primeira execução do gate completo falhou na etapa de formatação: o novo arquivo de testes do documento OpenAPI tinha blocos `switch` fora do padrão do formatador. O arquivo foi reformatado com `dotnet format`, sem mudança de conteúdo, e o gate foi executado novamente por inteiro e passou: restore bloqueado, auditoria direta e transitiva sem vulnerabilidades conhecidas, secret scanning sem achados, formatação e analisadores aprovados, build Release com zero avisos e zero erros, 294 testes aprovados e cobertura com nova execução em 294/294. A fixture `Questao5/database.sqlite` manteve o SHA-256 `E355A3EDB7D73E7784A7467513248D530C27CC989C624A35D13A188B2AA8DD3C`. O TODO-004 foi encerrado em commit isolado.
+
+Observação registrada, sem alteração: as mensagens de validação estrutural geradas pelo framework, como a de campo obrigatório, estão em inglês, enquanto as mensagens próprias da API estão em português.
+
+Permanecem pendentes de decisão do usuário: a forma de entrega (TODO-006) e o encerramento formal dos itens de segurança que dependem de infraestrutura.
+
+---

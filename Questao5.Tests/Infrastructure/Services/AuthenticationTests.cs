@@ -221,8 +221,9 @@ public sealed class AuthenticationTests
     [InlineData("Jwt:MetadataAddress", "http://issuer.test/default/.well-known/openid-configuration")]
     public void Startup_WithInvalidJwtConfiguration_Fails(string key, string value)
     {
-        using var factory = new SecurityWebApplicationFactory()
-            .WithWebHostBuilder(builder => builder.UseSetting(key, value));
+        // As duas fábricas são descartadas: a derivada não descarta o banco temporário da original.
+        using var baseFactory = new SecurityWebApplicationFactory();
+        using var factory = baseFactory.WithWebHostBuilder(builder => builder.UseSetting(key, value));
 
         var exception = Record.Exception(() => factory.CreateClient());
 

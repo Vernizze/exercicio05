@@ -16,7 +16,10 @@ public sealed class SqliteConnectionFactoryTests
             var config = new DatabaseConfig(new SqliteConnectionStringBuilder
             {
                 DataSource = databasePath,
-                ForeignKeys = false
+                ForeignKeys = false,
+
+                // Sem pool, para não depender de SqliteConnection.ClearAllPools(), que é global.
+                Pooling = false
             }.ToString());
             var factory = new SqliteConnectionFactory(config);
 
@@ -29,8 +32,6 @@ public sealed class SqliteConnectionFactoryTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
-
             if (Directory.Exists(directoryPath))
             {
                 Directory.Delete(directoryPath, recursive: true);

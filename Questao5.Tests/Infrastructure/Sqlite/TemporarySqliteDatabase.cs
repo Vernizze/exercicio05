@@ -22,7 +22,11 @@ internal sealed class TemporarySqliteDatabase : IDisposable
         {
             DataSource = DatabasePath,
             Mode = SqliteOpenMode.ReadWriteCreate,
-            ForeignKeys = true
+            ForeignKeys = true,
+
+            // Sem pool: cada conexão fecha o arquivo ao ser descartada, e o descarte deste banco não precisa
+            // de SqliteConnection.ClearAllPools(), que é global e fechava conexões de testes em paralelo.
+            Pooling = false
         }.ToString();
     }
 
@@ -57,7 +61,6 @@ internal sealed class TemporarySqliteDatabase : IDisposable
         }
 
         disposed = true;
-        SqliteConnection.ClearAllPools();
 
         if (Directory.Exists(directoryPath))
         {

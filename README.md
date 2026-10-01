@@ -52,6 +52,8 @@ $TOKEN = $resposta.access_token
 
 O token vale 15 minutos. No Swagger, use o botão **Authorize** e cole apenas o token.
 
+O Swagger documenta os dois endpoints: descrição e exemplo de cada atributo, todos os retornos possíveis e um exemplo nomeado para cada situação de erro.
+
 ### Correntistas e contas do seed
 
 | `client_id` | Titular | Conta | `idContaCorrente` | Situação |

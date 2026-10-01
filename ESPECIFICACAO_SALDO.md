@@ -427,6 +427,10 @@ Os itens abaixo estão cobertos por testes automatizados, com as seguintes obser
 - a fixture mantém o SHA-256 esperado;
 - o gate completo permanece reproduzível.
 
+### Documentação OpenAPI
+
+O contrato desta especificação é publicado no documento OpenAPI (Swagger, somente em Development): resumo e descrição da operação, o parâmetro de rota com exemplo, os retornos 200, 400, 401, 429, 500 e 504, o header `Cache-Control` da resposta de sucesso, descrição e exemplo de cada atributo e exemplos nomeados de cada situação de erro. Um teste compara cada exemplo de erro com a resposta real do endpoint.
+
 ## 10. Riscos residuais e decisões explícitas
 
 1. **Emissor de teste:** a consulta exige JWT e titularidade, mas o emissor usado no desafio não autentica pessoas; risco aceito somente para o exercício, conforme `ESPECIFICACAO_AUTENTICACAO.md`.

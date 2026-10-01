@@ -7,6 +7,12 @@
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <NuGetAudit>true</NuGetAudit>
     <NuGetAuditMode>all</NuGetAuditMode>
+    <!-- Comentários XML alimentam as descrições e os exemplos do documento OpenAPI. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- CS1591 (membro público sem comentário XML) é suprimido somente neste projeto: os comentários
+         são exigidos no contrato HTTP, verificado por testes do documento OpenAPI, e não em toda
+         classe pública interna da aplicação. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
     <DefaultItemExcludes>$(DefaultItemExcludes);$(MSBuildProjectDirectory)\bin\**;$(MSBuildProjectDirectory)\obj\**</DefaultItemExcludes>
   </PropertyGroup>
 
